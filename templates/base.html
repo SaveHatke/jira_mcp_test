@@ -20,5 +20,89 @@
     {% block content %}{% endblock %}
     
     {% block scripts %}{% endblock %}
+    
+    <!-- Session Management Script -->
+    {% if session_info and session_info.expires_at %}
+    <script>
+    // Session timeout management
+    (function() {
+        const sessionExpiresAt = new Date('{{ session_info.expires_at.isoformat() }}');
+        const warningMinutes = 5; // Show warning 5 minutes before expiration
+        const warningTime = new Date(sessionExpiresAt.getTime() - (warningMinutes * 60 * 1000));
+        
+        let warningShown = false;
+        let logoutTimer = null;
+        
+        function checkSessionTimeout() {
+            const now = new Date();
+            
+            // Check if session has expired
+            if (now >= sessionExpiresAt) {
+                showSessionExpiredModal();
+                return;
+            }
+            
+            // Check if we should show warning
+            if (now >= warningTime && !warningShown) {
+                showSessionWarning();
+                warningShown = true;
+            }
+        }
+        
+        function showSessionWarning() {
+            const minutesLeft = Math.ceil((sessionExpiresAt - new Date()) / (1000 * 60));
+            
+            if (confirm(`Your session will expire in ${minutesLeft} minutes. Would you like to extend your session?`)) {
+                // Extend session by making a request to the server
+                fetch('/auth/extend-session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': '{{ csrf_token or "" }}'
+                    },
+                    credentials: 'same-origin'
+                })
+                .then(response => {
+                    if (response.ok) {
+                        // Reload page to get new session info
+                        window.location.reload();
+                    } else {
+                        showSessionExpiredModal();
+                    }
+                })
+                .catch(() => {
+                    showSessionExpiredModal();
+                });
+            }
+        }
+        
+        function showSessionExpiredModal() {
+            alert('Your session has expired. You will be redirected to the login page.');
+            window.location.href = '/auth/login';
+        }
+        
+        // Check session timeout every 30 seconds
+        setInterval(checkSessionTimeout, 30000);
+        
+        // Initial check
+        checkSessionTimeout();
+        
+        // Auto-logout on session expiration
+        const timeUntilExpiration = sessionExpiresAt - new Date();
+        if (timeUntilExpiration > 0) {
+            logoutTimer = setTimeout(() => {
+                showSessionExpiredModal();
+            }, timeUntilExpiration);
+        }
+        
+        // Clear timer on page unload
+        window.addEventListener('beforeunload', function() {
+            if (logoutTimer) {
+                clearTimeout(logoutTimer);
+            }
+        });
+    })();
+    </script>
+    {% endif %}
 </body>
 </html>

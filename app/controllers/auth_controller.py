@@ -353,28 +353,51 @@ async def show_login_form(request: Request):
     Display user login form.
     
     Shows the login form where users can enter their Employee ID,
-    Name, or Email Address along with their password.
+    Name, or Email Address along with their password. Includes CSRF token.
     """
+    # Generate CSRF token for the form
+    from app.utils.csrf import generate_csrf_token
+    csrf_token = generate_csrf_token()
+    
     return templates.TemplateResponse(
         "auth/login.html",
-        {"request": request}
+        {
+            "request": request,
+            "csrf_token": csrf_token,
+            "session_timeout_minutes": settings.session_timeout_minutes
+        }
     )
 
 
 @router.post("/login")
 async def login_user(
     request: Request,
-    response: Response,
     username: str = Form(..., description="Employee ID, Name, or Email Address"),
-    password: str = Form(..., description="User password")
+    password: str = Form(..., description="User password"),
+    csrf_token: str = Form(..., description="CSRF protection token")
 ):
     """
     Authenticate user and create session.
     
-    Validates user credentials and creates a JWT session token
-    with configurable expiration time.
+    Validates user credentials, CSRF token, and creates a JWT session token
+    with configurable expiration time and proper security measures.
     """
     try:
+        # Validate CSRF token
+        from app.utils.csrf import validate_csrf_token
+        if not validate_csrf_token(csrf_token):
+            logger.warning("CSRF token validation failed during login", username=username)
+            
+            return templates.TemplateResponse(
+                "auth/login.html",
+                {
+                    "request": request,
+                    "error": "Security validation failed. Please try again.",
+                    "username": username,
+                    "csrf_token": getattr(request.state, 'csrf_token', '')
+                }
+            )
+        
         # Validate login request
         login_request = LoginRequest(username=username, password=password)
         
@@ -389,18 +412,37 @@ async def login_user(
                 {
                     "request": request,
                     "error": "Invalid username or password",
-                    "username": username
+                    "username": username,
+                    "csrf_token": getattr(request.state, 'csrf_token', '')
                 }
             )
         
-        # Create JWT token
-        token = auth_service.create_jwt_token(user)
+        # Get client information for session
+        client_ip = "unknown"
+        if hasattr(request, "client") and request.client:
+            client_ip = request.client.host
+        
+        # Check for forwarded headers (behind proxy)
+        forwarded_for = request.headers.get("x-forwarded-for")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+        
+        user_agent = request.headers.get("user-agent", "unknown")
+        
+        # Create session using session service
+        from app.services.session_service import session_service
+        session_info = await session_service.create_session(
+            user=user,
+            user_agent=user_agent,
+            ip_address=client_ip,
+            timeout_minutes=settings.session_timeout_minutes
+        )
         
         # Set secure cookie with JWT token
         response = RedirectResponse(url="/dashboard", status_code=302)
         response.set_cookie(
             key="session_token",
-            value=token,
+            value=session_info['token'],
             max_age=settings.session_timeout_minutes * 60,
             httponly=True,
             secure=not settings.debug,  # Use secure cookies in production
@@ -409,7 +451,10 @@ async def login_user(
         
         logger.info("User login successful", 
                    user_id=user.id,
-                   employee_id=user.employee_id)
+                   employee_id=user.employee_id,
+                   session_id=session_info['session_id'],
+                   client_ip=client_ip,
+                   timeout_minutes=settings.session_timeout_minutes)
         
         return response
         
@@ -423,7 +468,8 @@ async def login_user(
             {
                 "request": request,
                 "error": str(e),
-                "username": username
+                "username": username,
+                "csrf_token": getattr(request.state, 'csrf_token', '')
             }
         )
         
@@ -437,7 +483,8 @@ async def login_user(
             {
                 "request": request,
                 "error": "Authentication failed. Please try again.",
-                "username": username
+                "username": username,
+                "csrf_token": getattr(request.state, 'csrf_token', '')
             }
         )
         
@@ -451,30 +498,100 @@ async def login_user(
             {
                 "request": request,
                 "error": "An unexpected error occurred. Please try again.",
-                "username": username
+                "username": username,
+                "csrf_token": getattr(request.state, 'csrf_token', '')
             }
         )
 
 
 @router.post("/logout")
-async def logout_user(request: Request, response: Response):
+async def logout_user(request: Request):
     """
     Log out user and clear session.
     
-    Clears the session cookie and redirects to login page.
+    Invalidates the session in database, clears the session cookie,
+    and redirects to login page.
     """
-    response = RedirectResponse(url="/auth/login", status_code=302)
-    response.delete_cookie(key="session_token")
-    
-    logger.info("User logged out")
-    
-    return response
+    try:
+        # Get current session token
+        token = request.cookies.get("session_token")
+        
+        if token:
+            # Invalidate session in database
+            from app.services.session_service import session_service
+            await session_service.invalidate_session(token)
+            
+            # Log user information if available
+            user_id = getattr(request.state, 'user_id', None)
+            employee_id = getattr(request.state, 'user', {}).get('employee_id', 'unknown')
+            
+            logger.info("User logged out", 
+                       user_id=user_id,
+                       employee_id=employee_id)
+        
+        # Create response and clear cookie
+        response = RedirectResponse(url="/auth/login", status_code=302)
+        response.delete_cookie(key="session_token")
+        
+        return response
+        
+    except Exception as e:
+        logger.error("Error during logout", error=str(e))
+        
+        # Still redirect to login even if logout fails
+        response = RedirectResponse(url="/auth/login", status_code=302)
+        response.delete_cookie(key="session_token")
+        
+        return response
 
 
-# Dependency for getting current user from JWT token
+@router.get("/logout")
+async def logout_user_get(request: Request):
+    """
+    Handle GET request to logout (for direct URL access).
+    
+    Redirects to POST logout or directly logs out user.
+    """
+    try:
+        # Get current session token
+        token = request.cookies.get("session_token")
+        
+        if token:
+            # Invalidate session in database
+            from app.services.session_service import session_service
+            await session_service.invalidate_session(token)
+            
+            # Log user information if available
+            user_id = getattr(request.state, 'user_id', None)
+            employee_id = getattr(request.state, 'user', {}).get('employee_id', 'unknown')
+            
+            logger.info("User logged out via GET", 
+                       user_id=user_id,
+                       employee_id=employee_id)
+        
+        # Create response and clear cookie
+        response = RedirectResponse(url="/auth/login", status_code=302)
+        response.delete_cookie(key="session_token")
+        
+        return response
+        
+    except Exception as e:
+        logger.error("Error during GET logout", error=str(e))
+        
+        # Still redirect to login even if logout fails
+        response = RedirectResponse(url="/auth/login", status_code=302)
+        response.delete_cookie(key="session_token")
+        
+        return response
+
+
+# Dependency for getting current user from request state (set by middleware)
 async def get_current_user(request: Request) -> Optional[User]:
     """
-    Get current authenticated user from JWT token.
+    Get current authenticated user from request state.
+    
+    The authentication middleware validates the session and sets the user
+    in request.state, so we just need to retrieve it from there.
     
     Args:
         request: FastAPI request object
@@ -483,25 +600,16 @@ async def get_current_user(request: Request) -> Optional[User]:
         Current user if authenticated, None otherwise
     """
     try:
-        # Get token from cookie
-        token = request.cookies.get("session_token")
-        if not token:
-            return None
+        # Get user from request state (set by authentication middleware)
+        user = getattr(request.state, 'user', None)
         
-        # Validate token
-        payload = auth_service.validate_jwt_token(token)
-        if not payload:
-            return None
+        if user and isinstance(user, User) and user.active:
+            return user
         
-        # Get user from database
-        user = await auth_service.get_user_by_id(payload['user_id'])
-        if not user or not user.active:
-            return None
-        
-        return user
+        return None
         
     except Exception as e:
-        logger.error("Error getting current user", error=str(e))
+        logger.error("Error getting current user from request state", error=str(e))
         return None
 
 
@@ -527,3 +635,95 @@ async def require_authentication(request: Request) -> User:
             headers={"WWW-Authenticate": "Bearer"}
         )
     return user
+
+
+# Dependency for getting session information
+def get_session_info(request: Request) -> dict:
+    """
+    Get session information from request state.
+    
+    Args:
+        request: FastAPI request object
+        
+    Returns:
+        Dictionary with session information
+    """
+    return {
+        'user_id': getattr(request.state, 'user_id', None),
+        'session_id': getattr(request.state, 'session_id', None),
+        'expires_at': getattr(request.state, 'session_expires_at', None),
+        'csrf_token': getattr(request.state, 'csrf_token', ''),
+        'client_ip': getattr(request.state, 'client_ip', 'unknown'),
+        'client_user_agent': getattr(request.state, 'client_user_agent', 'unknown')
+    }
+
+@router.post("/extend-session")
+async def extend_user_session(
+    request: Request,
+    user: User = Depends(require_authentication)
+):
+    """
+    Extend current user session.
+    
+    Extends the current session expiration time and returns
+    new session information.
+    """
+    try:
+        # Get current session token
+        token = request.cookies.get("session_token")
+        if not token:
+            logger.warning("No session token found for extension", user_id=user.id)
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                {"error": "No active session found"},
+                status_code=401
+            )
+        
+        # Extend session
+        from app.services.session_service import session_service
+        new_session_info = await session_service.extend_session(token)
+        
+        if not new_session_info:
+            logger.warning("Failed to extend session", user_id=user.id)
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                {"error": "Failed to extend session"},
+                status_code=400
+            )
+        
+        logger.info("Session extended successfully", 
+                   user_id=user.id,
+                   employee_id=user.employee_id,
+                   new_expires_at=new_session_info['expires_at'].isoformat())
+        
+        # Return success response with new session cookie
+        from fastapi.responses import JSONResponse
+        response = JSONResponse({
+            "success": True,
+            "message": "Session extended successfully",
+            "expires_at": new_session_info['expires_at'].isoformat(),
+            "timeout_minutes": new_session_info['timeout_minutes']
+        })
+        
+        # Update session cookie
+        response.set_cookie(
+            key="session_token",
+            value=new_session_info['token'],
+            max_age=settings.session_timeout_minutes * 60,
+            httponly=True,
+            secure=not settings.debug,
+            samesite="lax"
+        )
+        
+        return response
+        
+    except Exception as e:
+        logger.error("Session extension failed", 
+                    user_id=user.id,
+                    error=str(e))
+        
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            {"error": "Session extension failed"},
+            status_code=500
+        )

@@ -89,6 +89,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add custom middleware for authentication and security
+from app.middleware import (
+    RequestCorrelationMiddleware,
+    SecurityHeadersMiddleware,
+    AuthenticationMiddleware,
+    CSRFProtectionMiddleware,
+    ErrorHandlingMiddleware,
+    RateLimitingMiddleware
+)
+
+# Add middleware in reverse order (last added = first executed)
+app.add_middleware(ErrorHandlingMiddleware)
+app.add_middleware(RateLimitingMiddleware, requests_per_minute=120)  # Allow more requests for development
+app.add_middleware(CSRFProtectionMiddleware)
+app.add_middleware(AuthenticationMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestCorrelationMiddleware)
+
 # Include routers
 app.include_router(config_management_router)
 

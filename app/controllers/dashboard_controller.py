@@ -32,14 +32,25 @@ async def show_dashboard(
     Shows the main application dashboard with available features
     and user profile information after successful authentication.
     """
+    # Get session information
+    from app.controllers.auth_controller import get_session_info
+    session_info = get_session_info(request)
+    
     logger.info("Dashboard accessed", 
                user_id=user.id,
-               employee_id=user.employee_id)
+               employee_id=user.employee_id,
+               session_id=session_info.get('session_id'))
+    
+    # Check if user has completed configuration
+    configuration_complete = user.is_configuration_complete()
     
     return templates.TemplateResponse(
         "dashboard/index.html",
         {
             "request": request,
-            "user": user
+            "user": user,
+            "session_info": session_info,
+            "configuration_complete": configuration_complete,
+            "csrf_token": session_info.get('csrf_token', '')
         }
     )
