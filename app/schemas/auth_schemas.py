@@ -14,12 +14,25 @@ class JiraUserResponse(BaseModel):
     """Schema for Jira /myself API response."""
     
     name: str = Field(..., description="Employee ID from Jira")
-    email: EmailStr = Field(..., description="Email address")
+    emailAddress: EmailStr = Field(..., description="Email address from Jira API")
     displayName: str = Field(..., description="Display name")
     active: bool = Field(..., description="User active status")
     deleted: bool = Field(..., description="User deleted status")
     self: str = Field(..., description="Self URL for extracting Jira base URL")
     avatarUrls: dict = Field(..., description="Avatar URLs")
+    
+    # Optional fields that might be present
+    key: Optional[str] = Field(None, description="User key")
+    timeZone: Optional[str] = Field(None, description="User timezone")
+    locale: Optional[str] = Field(None, description="User locale")
+    groups: Optional[dict] = Field(None, description="User groups")
+    applicationRoles: Optional[dict] = Field(None, description="Application roles")
+    expand: Optional[str] = Field(None, description="Expand parameter")
+    
+    class Config:
+        """Pydantic configuration."""
+        # Allow extra fields that we don't explicitly define
+        extra = "allow"
 
 
 class UserRegistrationRequest(BaseModel):

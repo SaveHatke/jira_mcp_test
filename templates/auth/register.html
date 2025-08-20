@@ -35,15 +35,15 @@
 
                 <div>
                     <label for="jira_url" class="block text-sm font-medium text-gray-700">
-                        Jira URL (Optional)
+                        Jira URL <span class="text-red-500">*</span>
                     </label>
                     <div class="mt-1">
-                        <input id="jira_url" name="jira_url" type="url" value="{{ jira_url or '' }}"
+                        <input id="jira_url" name="jira_url" type="url" required value="{{ jira_url or '' }}"
                             class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                             placeholder="https://your-company.atlassian.net">
                     </div>
                     <p class="mt-2 text-sm text-gray-500">
-                        Optional: Provide your Jira base URL if known
+                        Please provide your Jira base URL (e.g., https://your-company.atlassian.net)
                     </p>
                 </div>
 

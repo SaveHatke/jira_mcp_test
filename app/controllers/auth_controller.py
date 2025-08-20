@@ -55,7 +55,7 @@ async def show_registration_form(request: Request):
 async def validate_jira_pat(
     request: Request,
     jira_pat: str = Form(..., description="Jira Personal Access Token"),
-    jira_url: Optional[str] = Form(None, description="Optional Jira base URL")
+    jira_url: str = Form(..., description="Jira base URL")
 ):
     """
     Validate Jira PAT and show user confirmation.

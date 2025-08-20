@@ -118,7 +118,7 @@ class JiraAPIClient:
             )
         
         # Validate required fields
-        required_fields = ['name', 'email', 'displayName', 'self']
+        required_fields = ['name', 'emailAddress', 'displayName', 'self']  # Use emailAddress from Jira API
         missing_fields = []
         
         for field in required_fields:
@@ -254,7 +254,7 @@ class JiraAPIClient:
             processed_user_data = {
                 'employee_id': jira_user.name,
                 'name': jira_user.name,
-                'email': jira_user.email,
+                'email': jira_user.emailAddress,  # Use emailAddress from Jira API
                 'display_name': jira_user.displayName,
                 'active': jira_user.active,
                 'deleted': jira_user.deleted,
@@ -264,7 +264,7 @@ class JiraAPIClient:
             
             logger.info("Jira PAT validation successful", 
                        employee_id=jira_user.name,
-                       email=jira_user.email,
+                       email=jira_user.emailAddress,
                        jira_url=extracted_jira_url)
             
             return JiraValidationResult(
