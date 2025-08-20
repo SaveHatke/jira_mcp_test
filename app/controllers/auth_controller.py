@@ -352,8 +352,8 @@ async def show_login_form(request: Request):
     """
     Display user login form.
     
-    Shows the login form where users can enter their Employee ID,
-    Name, or Email Address along with their password. Includes CSRF token.
+    Shows the login form where users can enter their Employee ID
+    along with their password. Includes CSRF token.
     """
     # Generate CSRF token for the form
     from app.utils.csrf import generate_csrf_token
@@ -372,7 +372,7 @@ async def show_login_form(request: Request):
 @router.post("/login")
 async def login_user(
     request: Request,
-    username: str = Form(..., description="Employee ID, Name, or Email Address"),
+    username: str = Form(..., description="Employee ID (case insensitive)"),
     password: str = Form(..., description="User password"),
     csrf_token: str = Form(..., description="CSRF protection token")
 ):
@@ -381,16 +381,30 @@ async def login_user(
     
     Validates user credentials, CSRF token, and creates a JWT session token
     with configurable expiration time and proper security measures.
+    Only accepts Employee ID as username (case insensitive).
     """
     try:
+        # Normalize username to lowercase for case-insensitive comparison
+        username = username.strip().lower()
+        
+        # Generate a fresh CSRF token for the response (in case of error)
+        from app.utils.csrf import generate_csrf_token
+        fresh_csrf_token = generate_csrf_token()
+        
         # Validate CSRF token (for login, we don't require session-based validation)
         from app.utils.csrf import validate_csrf_token
         if not validate_csrf_token(csrf_token, session_id=None):
             logger.warning("CSRF token validation failed during login", username=username)
             
-            # Generate a new CSRF token for the error response
-            from app.utils.csrf import generate_csrf_token
-            new_csrf_token = generate_csrf_token()
+            # Log security event
+            from app.utils.audit_logging import log_security_event
+            log_security_event(
+                action="csrf_validation_failed",
+                outcome="failure",
+                ip_address=request.headers.get("x-forwarded-for", getattr(request.client, "host", "unknown")),
+                request_id=getattr(request.state, "request_id", None),
+                details={"context": "login", "username": username}
+            )
             
             return templates.TemplateResponse(
                 "auth/login.html",
@@ -398,26 +412,40 @@ async def login_user(
                     "request": request,
                     "error": "Security validation failed. Please try again.",
                     "username": username,
-                    "csrf_token": new_csrf_token
+                    "csrf_token": fresh_csrf_token,
+                    "session_timeout_minutes": settings.session_timeout_minutes
                 }
             )
         
         # Validate login request
         login_request = LoginRequest(username=username, password=password)
         
-        # Authenticate user
-        user = await auth_service.authenticate_user(username, password)
+        # Authenticate user (only by employee ID, case insensitive)
+        user = await auth_service.authenticate_user_by_employee_id(username, password)
         
         if not user:
             logger.warning("Login failed - invalid credentials", username=username)
+            
+            # Log authentication failure
+            from app.utils.audit_logging import log_authentication_event
+            log_authentication_event(
+                action="login",
+                outcome="failure",
+                ip_address=request.headers.get("x-forwarded-for", getattr(request.client, "host", "unknown")),
+                user_agent=request.headers.get("user-agent", "unknown"),
+                request_id=getattr(request.state, "request_id", None),
+                error_code="INVALID_CREDENTIALS",
+                details={"username": username}
+            )
             
             return templates.TemplateResponse(
                 "auth/login.html",
                 {
                     "request": request,
-                    "error": "Invalid username or password",
+                    "error": "Invalid Employee ID or password",
                     "username": username,
-                    "csrf_token": getattr(request.state, 'csrf_token', '')
+                    "csrf_token": fresh_csrf_token,
+                    "session_timeout_minutes": settings.session_timeout_minutes
                 }
             )
         
@@ -433,14 +461,35 @@ async def login_user(
         
         user_agent = request.headers.get("user-agent", "unknown")
         
-        # Create session using session service
-        from app.services.session_service import session_service
-        session_info = await session_service.create_session(
-            user=user,
-            user_agent=user_agent,
-            ip_address=client_ip,
-            timeout_minutes=settings.session_timeout_minutes
+        # Create JWT token
+        from app.utils.jwt import generate_jwt_token
+        jwt_token = generate_jwt_token(
+            user_id=user.id,
+            employee_id=user.employee_id,
+            expires_in_minutes=settings.session_timeout_minutes
         )
+        
+        # Create session in database
+        from app.services.session_service import session_service
+        from app.utils.encryption import hash_token
+        from datetime import datetime, timezone, timedelta
+        
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.session_timeout_minutes)
+        token_hash = hash_token(jwt_token)
+        
+        db_session = await session_service.create_session(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            ip_address=client_ip,
+            user_agent=user_agent
+        )
+        
+        session_info = {
+            'token': jwt_token,
+            'session_id': db_session.session_id,
+            'expires_at': expires_at
+        }
         
         # Set secure cookie with JWT token
         response = RedirectResponse(url="/dashboard", status_code=302)
@@ -460,6 +509,19 @@ async def login_user(
                    client_ip=client_ip,
                    timeout_minutes=settings.session_timeout_minutes)
         
+        # Log successful authentication
+        from app.utils.audit_logging import log_authentication_event
+        log_authentication_event(
+            action="login",
+            user_id=user.id,
+            employee_id=user.employee_id,
+            outcome="success",
+            ip_address=client_ip,
+            user_agent=user_agent,
+            request_id=getattr(request.state, "request_id", None),
+            details={"session_timeout_minutes": settings.session_timeout_minutes}
+        )
+        
         return response
         
     except ValidationError as e:
@@ -473,7 +535,8 @@ async def login_user(
                 "request": request,
                 "error": str(e),
                 "username": username,
-                "csrf_token": getattr(request.state, 'csrf_token', '')
+                "csrf_token": fresh_csrf_token,
+                "session_timeout_minutes": settings.session_timeout_minutes
             }
         )
         
@@ -488,7 +551,8 @@ async def login_user(
                 "request": request,
                 "error": "Authentication failed. Please try again.",
                 "username": username,
-                "csrf_token": getattr(request.state, 'csrf_token', '')
+                "csrf_token": fresh_csrf_token,
+                "session_timeout_minutes": settings.session_timeout_minutes
             }
         )
         
@@ -503,7 +567,8 @@ async def login_user(
                 "request": request,
                 "error": "An unexpected error occurred. Please try again.",
                 "username": username,
-                "csrf_token": getattr(request.state, 'csrf_token', '')
+                "csrf_token": fresh_csrf_token,
+                "session_timeout_minutes": settings.session_timeout_minutes
             }
         )
 

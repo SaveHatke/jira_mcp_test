@@ -1,25 +1,22 @@
 """
-Session management service for user authentication and session handling.
+Session management service for JWT tokens and user sessions.
 
-This module provides comprehensive session management including JWT token
-creation, validation, session storage, and automatic cleanup.
+This module provides session management capabilities including
+JWT token validation, session tracking, and user context management.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
-from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from jose import jwt, JWTError
-import structlog
+from sqlalchemy import select, delete
 
-from app.config import settings
-from app.database import get_session
-from app.models.user import User
-from app.models.session import UserSession
-from app.exceptions import AuthenticationError, SecurityError, DatabaseError
-from app.utils.encryption import hash_token
-from app.utils.csrf import generate_csrf_token
+from app.database import get_db_session
+from app.models.user import User, UserSession
+from app.utils.jwt import validate_jwt_token, TokenPayload
 from app.utils.logging import get_logger
+from app.utils.audit_logging import log_authentication_event
+from app.exceptions import AuthenticationError
+from app.config import settings
 
 logger = get_logger(__name__)
 
@@ -28,262 +25,227 @@ class SessionService:
     """
     Service for managing user sessions and JWT tokens.
     
-    Provides methods for creating, validating, and managing user sessions
-    with proper security practices and automatic cleanup.
+    Provides session validation, cleanup, and user context management
+    with proper security and audit logging.
     """
     
     def __init__(self) -> None:
-        """Initialize session service."""
+        """Initialize the session service."""
         pass
-    
-    async def create_session(
-        self,
-        user: User,
-        user_agent: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        timeout_minutes: Optional[int] = None
-    ) -> Dict[str, Any]:
-        """
-        Create new user session with JWT token.
-        
-        Args:
-            user: User instance
-            user_agent: Optional user agent string
-            ip_address: Optional IP address
-            timeout_minutes: Optional custom timeout (uses config default if not provided)
-            
-        Returns:
-            Dictionary with token, expiration, and CSRF token
-            
-        Raises:
-            AuthenticationError: If session creation fails
-            DatabaseError: If database operations fail
-        """
-        try:
-            # Use configured timeout or provided timeout
-            timeout = timeout_minutes or settings.session_timeout_minutes
-            
-            # Calculate expiration time
-            expires_at = datetime.utcnow() + timedelta(minutes=timeout)
-            
-            # Create JWT payload
-            payload = {
-                'user_id': user.id,
-                'employee_id': user.employee_id,
-                'email': user.email,
-                'display_name': user.display_name,
-                'exp': expires_at,
-                'iat': datetime.utcnow(),
-                'iss': settings.app_name,
-                'type': 'session'
-            }
-            
-            # Generate JWT token
-            token = jwt.encode(payload, settings.secret_key, algorithm='HS256')
-            
-            # Create session record in database
-            async with get_session() as session:
-                user_session = UserSession.create_session(
-                    user_id=user.id,
-                    token=token,
-                    timeout_minutes=timeout,
-                    user_agent=user_agent,
-                    ip_address=ip_address
-                )
-                
-                session.add(user_session)
-                await session.commit()
-                await session.refresh(user_session)
-            
-            # Generate CSRF token
-            csrf_token = generate_csrf_token(session_id=str(user_session.id))
-            
-            logger.info("User session created", 
-                       user_id=user.id,
-                       employee_id=user.employee_id,
-                       session_id=user_session.id,
-                       expires_at=expires_at.isoformat(),
-                       timeout_minutes=timeout)
-            
-            return {
-                'token': token,
-                'expires_at': expires_at,
-                'timeout_minutes': timeout,
-                'csrf_token': csrf_token,
-                'session_id': user_session.id
-            }
-            
-        except Exception as e:
-            logger.error("Session creation failed", 
-                        user_id=user.id,
-                        error=str(e))
-            raise AuthenticationError(
-                "Failed to create user session",
-                error_code="SESSION_CREATION_FAILED",
-                details={"user_id": user.id, "error": str(e)}
-            ) from e
     
     async def validate_session(self, token: str) -> Optional[Dict[str, Any]]:
         """
-        Validate JWT token and return user session information.
+        Validate session token and return user information.
         
         Args:
-            token: JWT token string
+            token: JWT session token
             
         Returns:
-            Session information if valid, None otherwise
+            Dictionary with user session information if valid, None otherwise
         """
         try:
-            # Decode JWT token
-            payload = jwt.decode(token, settings.secret_key, algorithms=['HS256'])
+            # Validate JWT token
+            token_payload = validate_jwt_token(token)
             
-            # Validate token type
-            if payload.get('type') != 'session':
-                logger.warning("Invalid token type", token_type=payload.get('type'))
-                return None
-            
-            # Check expiration
-            exp_timestamp = payload.get('exp')
-            if not exp_timestamp:
-                logger.warning("Token missing expiration")
-                return None
-            
-            expires_at = datetime.fromtimestamp(exp_timestamp)
-            if datetime.utcnow() > expires_at:
-                logger.info("Token expired", 
-                           expires_at=expires_at.isoformat(),
-                           user_id=payload.get('user_id'))
-                return None
-            
-            # Verify session exists in database
-            token_hash = hash_token(token)
-            async with get_session() as session:
-                stmt = select(UserSession).where(
-                    UserSession.token_hash == token_hash,
-                    UserSession.expires_at > datetime.utcnow()
+            # Get database session
+            async with get_db_session() as db:
+                # Check if session exists in database
+                session_query = select(UserSession).where(
+                    UserSession.session_id == token_payload.session_id,
+                    UserSession.expires_at > datetime.now(timezone.utc)
                 )
-                result = await session.execute(stmt)
-                user_session = result.scalar_one_or_none()
                 
-                if not user_session:
-                    logger.warning("Session not found in database", 
-                                  user_id=payload.get('user_id'))
+                result = await db.execute(session_query)
+                db_session = result.scalar_one_or_none()
+                
+                if not db_session:
+                    logger.warning(
+                        "Session not found in database",
+                        session_id=token_payload.session_id,
+                        user_id=token_payload.user_id
+                    )
                     return None
                 
                 # Get user information
-                user = await session.get(User, payload['user_id'])
-                if not user or not user.active:
-                    logger.warning("User not found or inactive", 
-                                  user_id=payload.get('user_id'))
+                user_query = select(User).where(
+                    User.id == token_payload.user_id,
+                    User.active == True
+                )
+                
+                result = await db.execute(user_query)
+                user = result.scalar_one_or_none()
+                
+                if not user:
+                    logger.warning(
+                        "User not found or inactive",
+                        user_id=token_payload.user_id,
+                        session_id=token_payload.session_id
+                    )
                     return None
-            
-            # Return session information
-            return {
-                'user_id': user.id,
-                'employee_id': user.employee_id,
-                'email': user.email,
-                'display_name': user.display_name,
-                'name': user.name,
-                'avatar_url': user.avatar_url,
-                'session_id': user_session.id,
-                'expires_at': expires_at,
-                'user': user
-            }
-            
-        except JWTError as e:
-            logger.warning("JWT validation failed", error=str(e))
+                
+                # Update session last accessed time
+                db_session.last_accessed_at = datetime.now(timezone.utc)
+                await db.commit()
+                
+                # Return session information
+                session_info = {
+                    "user_id": user.id,
+                    "employee_id": user.employee_id,
+                    "user": {
+                        "id": user.id,
+                        "employee_id": user.employee_id,
+                        "name": user.name,
+                        "email": user.email,
+                        "display_name": user.display_name,
+                        "avatar_url": user.avatar_url,
+                        "jira_url": user.jira_url
+                    },
+                    "session_id": token_payload.session_id,
+                    "expires_at": token_payload.expires_at,
+                    "issued_at": token_payload.issued_at
+                }
+                
+                logger.debug(
+                    "Session validated successfully",
+                    user_id=user.id,
+                    employee_id=user.employee_id,
+                    session_id=token_payload.session_id
+                )
+                
+                return session_info
+                
+        except AuthenticationError as e:
+            logger.warning(
+                "Session validation failed",
+                error_code=e.error_code,
+                message=e.message
+            )
             return None
+        
         except Exception as e:
-            logger.error("Session validation failed", error=str(e))
+            logger.error("Session validation error", error=str(e))
             return None
     
-    async def extend_session(self, token: str, additional_minutes: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    async def create_session(
+        self,
+        user_id: int,
+        token_hash: str,
+        expires_at: datetime,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> UserSession:
         """
-        Extend existing session expiration time.
+        Create a new user session in the database.
         
         Args:
-            token: Current JWT token
-            additional_minutes: Additional minutes to extend (uses config default if not provided)
+            user_id: User database ID
+            token_hash: Hashed JWT token
+            expires_at: Session expiration time
+            ip_address: Client IP address
+            user_agent: Client user agent
             
         Returns:
-            New session information if successful, None otherwise
+            Created UserSession object
         """
         try:
-            # Validate current session
-            session_info = await self.validate_session(token)
-            if not session_info:
-                return None
-            
-            # Calculate new expiration
-            extension_minutes = additional_minutes or settings.session_timeout_minutes
-            new_expires_at = datetime.utcnow() + timedelta(minutes=extension_minutes)
-            
-            # Update session in database
-            token_hash = hash_token(token)
-            async with get_session() as session:
-                stmt = select(UserSession).where(UserSession.token_hash == token_hash)
-                result = await session.execute(stmt)
-                user_session = result.scalar_one_or_none()
+            async with get_db_session() as db:
+                # Create new session
+                session = UserSession(
+                    user_id=user_id,
+                    token_hash=token_hash,
+                    expires_at=expires_at,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    created_at=datetime.now(timezone.utc),
+                    last_accessed_at=datetime.now(timezone.utc)
+                )
                 
-                if user_session:
-                    user_session.extend_session(extension_minutes)
-                    await session.commit()
-            
-            # Create new JWT token with extended expiration
-            user = session_info['user']
-            new_session = await self.create_session(
-                user=user,
-                timeout_minutes=extension_minutes
-            )
-            
-            # Clean up old session
-            await self.invalidate_session(token)
-            
-            logger.info("Session extended", 
-                       user_id=user.id,
-                       old_expires_at=session_info['expires_at'].isoformat(),
-                       new_expires_at=new_expires_at.isoformat())
-            
-            return new_session
-            
+                db.add(session)
+                await db.commit()
+                await db.refresh(session)
+                
+                logger.info(
+                    "Session created",
+                    user_id=user_id,
+                    session_id=session.session_id,
+                    expires_at=expires_at.isoformat()
+                )
+                
+                # Log authentication event
+                log_authentication_event(
+                    action="session_created",
+                    user_id=user_id,
+                    outcome="success",
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    details={"expires_at": expires_at.isoformat()}
+                )
+                
+                return session
+                
         except Exception as e:
-            logger.error("Session extension failed", error=str(e))
-            return None
+            logger.error("Session creation failed", error=str(e), user_id=user_id)
+            raise AuthenticationError(
+                "Failed to create session",
+                error_code="SESSION_CREATION_FAILED",
+                details={"error": str(e)}
+            ) from e
     
-    async def invalidate_session(self, token: str) -> bool:
+    async def invalidate_session(self, session_id: str, user_id: Optional[int] = None) -> bool:
         """
-        Invalidate user session by removing it from database.
+        Invalidate a user session.
         
         Args:
-            token: JWT token to invalidate
+            session_id: Session ID to invalidate
+            user_id: Optional user ID for additional validation
             
         Returns:
             True if session was invalidated, False otherwise
         """
         try:
-            token_hash = hash_token(token)
-            
-            async with get_session() as session:
-                stmt = delete(UserSession).where(UserSession.token_hash == token_hash)
-                result = await session.execute(stmt)
-                await session.commit()
+            async with get_db_session() as db:
+                # Build query
+                query = delete(UserSession).where(UserSession.session_id == session_id)
+                
+                if user_id:
+                    query = query.where(UserSession.user_id == user_id)
+                
+                # Execute deletion
+                result = await db.execute(query)
+                await db.commit()
                 
                 invalidated = result.rowcount > 0
                 
                 if invalidated:
-                    logger.info("Session invalidated", token_hash=token_hash[:16] + "...")
+                    logger.info(
+                        "Session invalidated",
+                        session_id=session_id,
+                        user_id=user_id
+                    )
+                    
+                    # Log authentication event
+                    log_authentication_event(
+                        action="session_invalidated",
+                        user_id=user_id,
+                        outcome="success",
+                        details={"session_id": session_id}
+                    )
                 else:
-                    logger.warning("Session not found for invalidation", token_hash=token_hash[:16] + "...")
+                    logger.warning(
+                        "Session not found for invalidation",
+                        session_id=session_id,
+                        user_id=user_id
+                    )
                 
                 return invalidated
                 
         except Exception as e:
-            logger.error("Session invalidation failed", error=str(e))
+            logger.error("Session invalidation failed", error=str(e), session_id=session_id)
             return False
     
     async def invalidate_all_user_sessions(self, user_id: int) -> int:
         """
-        Invalidate all sessions for a specific user.
+        Invalidate all sessions for a user.
         
         Args:
             user_id: User ID
@@ -292,50 +254,66 @@ class SessionService:
             Number of sessions invalidated
         """
         try:
-            async with get_session() as session:
-                stmt = delete(UserSession).where(UserSession.user_id == user_id)
-                result = await session.execute(stmt)
-                await session.commit()
+            async with get_db_session() as db:
+                # Delete all sessions for user
+                query = delete(UserSession).where(UserSession.user_id == user_id)
+                result = await db.execute(query)
+                await db.commit()
                 
-                count = result.rowcount
+                invalidated_count = result.rowcount
                 
-                logger.info("All user sessions invalidated", 
-                           user_id=user_id,
-                           sessions_invalidated=count)
+                logger.info(
+                    "All user sessions invalidated",
+                    user_id=user_id,
+                    count=invalidated_count
+                )
                 
-                return count
+                # Log authentication event
+                log_authentication_event(
+                    action="all_sessions_invalidated",
+                    user_id=user_id,
+                    outcome="success",
+                    details={"invalidated_count": invalidated_count}
+                )
+                
+                return invalidated_count
                 
         except Exception as e:
-            logger.error("Failed to invalidate all user sessions", 
-                        user_id=user_id,
-                        error=str(e))
+            logger.error("Failed to invalidate all user sessions", error=str(e), user_id=user_id)
             return 0
     
     async def cleanup_expired_sessions(self) -> int:
         """
-        Clean up expired sessions from database.
+        Clean up expired sessions from the database.
         
         Returns:
-            Number of expired sessions cleaned up
+            Number of sessions cleaned up
         """
         try:
-            async with get_session() as session:
-                stmt = delete(UserSession).where(UserSession.expires_at < datetime.utcnow())
-                result = await session.execute(stmt)
-                await session.commit()
+            async with get_db_session() as db:
+                # Delete expired sessions
+                query = delete(UserSession).where(
+                    UserSession.expires_at <= datetime.now(timezone.utc)
+                )
                 
-                count = result.rowcount
+                result = await db.execute(query)
+                await db.commit()
                 
-                if count > 0:
-                    logger.info("Expired sessions cleaned up", sessions_cleaned=count)
+                cleaned_count = result.rowcount
                 
-                return count
+                if cleaned_count > 0:
+                    logger.info(
+                        "Expired sessions cleaned up",
+                        count=cleaned_count
+                    )
+                
+                return cleaned_count
                 
         except Exception as e:
-            logger.error("Failed to cleanup expired sessions", error=str(e))
+            logger.error("Session cleanup failed", error=str(e))
             return 0
     
-    async def get_user_sessions(self, user_id: int) -> list:
+    async def get_user_sessions(self, user_id: int) -> List[Dict[str, Any]]:
         """
         Get all active sessions for a user.
         
@@ -343,63 +321,128 @@ class SessionService:
             user_id: User ID
             
         Returns:
-            List of active session information
+            List of session information dictionaries
         """
         try:
-            async with get_session() as session:
-                stmt = select(UserSession).where(
+            async with get_db_session() as db:
+                # Get active sessions for user
+                query = select(UserSession).where(
                     UserSession.user_id == user_id,
-                    UserSession.expires_at > datetime.utcnow()
+                    UserSession.expires_at > datetime.now(timezone.utc)
                 ).order_by(UserSession.created_at.desc())
                 
-                result = await session.execute(stmt)
+                result = await db.execute(query)
                 sessions = result.scalars().all()
                 
-                return [
-                    {
-                        'id': s.id,
-                        'created_at': s.created_at,
-                        'expires_at': s.expires_at,
-                        'user_agent': s.user_agent,
-                        'ip_address': s.ip_address,
-                        'is_expired': s.is_expired(),
-                        'time_until_expiry_seconds': int(s.time_until_expiry().total_seconds())
+                session_list = []
+                for session in sessions:
+                    session_info = {
+                        "session_id": session.session_id,
+                        "created_at": session.created_at.isoformat(),
+                        "expires_at": session.expires_at.isoformat(),
+                        "last_accessed_at": session.last_accessed_at.isoformat() if session.last_accessed_at else None,
+                        "ip_address": session.ip_address,
+                        "user_agent": session.user_agent
                     }
-                    for s in sessions
-                ]
+                    session_list.append(session_info)
+                
+                return session_list
                 
         except Exception as e:
-            logger.error("Failed to get user sessions", 
-                        user_id=user_id,
-                        error=str(e))
+            logger.error("Failed to get user sessions", error=str(e), user_id=user_id)
             return []
+    
+    async def extend_session(self, session_id: str, extend_minutes: int = None) -> bool:
+        """
+        Extend session expiration time.
+        
+        Args:
+            session_id: Session ID to extend
+            extend_minutes: Minutes to extend (uses config default if not provided)
+            
+        Returns:
+            True if session was extended, False otherwise
+        """
+        try:
+            if extend_minutes is None:
+                extend_minutes = settings.session_timeout_minutes
+            
+            async with get_db_session() as db:
+                # Get session
+                query = select(UserSession).where(UserSession.session_id == session_id)
+                result = await db.execute(query)
+                session = result.scalar_one_or_none()
+                
+                if not session:
+                    return False
+                
+                # Extend expiration time
+                new_expires_at = datetime.now(timezone.utc) + timedelta(minutes=extend_minutes)
+                session.expires_at = new_expires_at
+                session.last_accessed_at = datetime.now(timezone.utc)
+                
+                await db.commit()
+                
+                logger.debug(
+                    "Session extended",
+                    session_id=session_id,
+                    new_expires_at=new_expires_at.isoformat()
+                )
+                
+                return True
+                
+        except Exception as e:
+            logger.error("Session extension failed", error=str(e), session_id=session_id)
+            return False
 
 
 # Global session service instance
 session_service = SessionService()
 
 
-# Convenience functions
-async def create_user_session(
-    user: User,
-    user_agent: Optional[str] = None,
-    ip_address: Optional[str] = None,
-    timeout_minutes: Optional[int] = None
-) -> Dict[str, Any]:
-    """Create new user session."""
-    return await session_service.create_session(user, user_agent, ip_address, timeout_minutes)
-
-
 async def validate_user_session(token: str) -> Optional[Dict[str, Any]]:
-    """Validate user session token."""
+    """
+    Validate user session using the global session service.
+    
+    Args:
+        token: JWT session token
+        
+    Returns:
+        Session information if valid, None otherwise
+    """
     return await session_service.validate_session(token)
 
 
-async def invalidate_user_session(token: str) -> bool:
-    """Invalidate user session."""
-    return await session_service.invalidate_session(token)
+async def create_user_session(
+    user_id: int,
+    token_hash: str,
+    expires_at: datetime,
+    **kwargs
+) -> UserSession:
+    """
+    Create user session using the global session service.
+    
+    Args:
+        user_id: User database ID
+        token_hash: Hashed JWT token
+        expires_at: Session expiration time
+        **kwargs: Additional session parameters
+        
+    Returns:
+        Created UserSession object
+    """
+    return await session_service.create_session(user_id, token_hash, expires_at, **kwargs)
 
 
-async def cleanup_expired_sessions() -> int:
-    """Clean up expired sessions."""
-    return await session_service.cleanup_expired_sessions()
+async def invalidate_user_session(session_id: str, user_id: Optional[int] = None) -> bool:
+    """
+    Invalidate user session using the global session service.
+    
+    Args:
+        session_id: Session ID to invalidate
+        user_id: Optional user ID for validation
+        
+    Returns:
+        True if session was invalidated, False otherwise
+    """
+    return await session_service.invalidate_session(session_id, user_id)

@@ -9,7 +9,7 @@ session management with proper security practices.
 from jose import jwt
 from datetime import datetime, timedelta
 from typing import Optional, Union
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
@@ -278,6 +278,58 @@ class AuthenticationService:
                 "Authentication query failed",
                 error_code="AUTH_QUERY_FAILED",
                 details={"username": username, "error": str(e)}
+            ) from e
+    
+    async def authenticate_user_by_employee_id(self, employee_id: str, password: str) -> Optional[User]:
+        """
+        Authenticate user by employee ID only (case insensitive).
+        
+        Args:
+            employee_id: Employee ID (case insensitive)
+            password: User password
+            
+        Returns:
+            Authenticated User if successful, None otherwise
+            
+        Raises:
+            DatabaseError: If database query fails
+        """
+        try:
+            async with get_session() as session:
+                # Search by employee_id only (case insensitive)
+                stmt = select(User).where(
+                    func.lower(User.employee_id) == employee_id.lower()
+                ).where(User.active == True)
+                
+                result = await session.execute(stmt)
+                user = result.scalar_one_or_none()
+                
+                if not user:
+                    logger.warning("User not found for authentication by employee ID", 
+                                  employee_id=employee_id)
+                    return None
+                
+                # Verify password
+                if not verify_password(password, user.hashed_password):
+                    logger.warning("Password verification failed", 
+                                  user_id=user.id,
+                                  employee_id=user.employee_id)
+                    return None
+                
+                logger.info("User authentication by employee ID successful", 
+                           user_id=user.id,
+                           employee_id=user.employee_id)
+                
+                return user
+                
+        except Exception as e:
+            logger.error("Authentication by employee ID query failed", 
+                        employee_id=employee_id,
+                        error=str(e))
+            raise DatabaseError(
+                "Authentication query failed",
+                error_code="AUTH_QUERY_FAILED",
+                details={"employee_id": employee_id, "error": str(e)}
             ) from e
     
     def create_jwt_token(self, user: User) -> str:

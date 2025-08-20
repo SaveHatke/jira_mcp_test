@@ -9,7 +9,7 @@
             Sign in to your account
         </h2>
         <p class="mt-2 text-center text-sm text-gray-600">
-            Use your Employee ID, Name, or Email Address
+            Use your Employee ID (case insensitive)
         </p>
     </div>
 
@@ -21,7 +21,7 @@
                 
                 <div>
                     <label for="username" class="block text-sm font-medium text-gray-700">
-                        Username
+                        Employee ID
                     </label>
                     <div class="mt-1">
                         <input 
@@ -31,11 +31,11 @@
                             required 
                             value="{{ username or '' }}"
                             class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                            placeholder="Employee ID, Name, or Email Address"
+                            placeholder="Employee ID (case insensitive)"
                         >
                     </div>
                     <p class="mt-2 text-sm text-gray-500">
-                        Enter your Employee ID, Name, or Email Address from registration
+                        Enter your Employee ID from registration (case insensitive)
                     </p>
                 </div>
 

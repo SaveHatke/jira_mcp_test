@@ -28,7 +28,9 @@ opentelemetry-instrumentation-sqlalchemy
 # Security
 bcrypt
 python-jose[cryptography]
+PyJWT             # JWT token handling
 cryptography       # For AES-256 encryption
+bleach            # HTML sanitization for XSS prevention
 
 # Background processing
 huey

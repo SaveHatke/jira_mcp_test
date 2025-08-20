@@ -103,26 +103,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         """
         response = await call_next(request)
         
-        # Add security headers
-        security_headers = {
-            # Prevent clickjacking
-            "X-Frame-Options": "DENY",
-            # Prevent MIME type sniffing
-            "X-Content-Type-Options": "nosniff",
-            # Enable XSS protection
-            "X-XSS-Protection": "1; mode=block",
-            # Referrer policy
-            "Referrer-Policy": "strict-origin-when-cross-origin",
-            # Content Security Policy (basic)
-            "Content-Security-Policy": (
-                "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline'; "
-                "style-src 'self' 'unsafe-inline'; "
-                "img-src 'self' data: https:; "
-                "font-src 'self'; "
-                "connect-src 'self'"
-            ),
-        }
+        # Add security headers using security manager
+        from app.utils.security_config import get_security_headers
+        security_headers = get_security_headers()
         
         # Add headers to response
         for header, value in security_headers.items():
@@ -436,6 +419,14 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
         from app.utils.csrf import generate_csrf_token
         session_id = getattr(request.state, 'session_id', None)
         request.state.csrf_token = generate_csrf_token(str(session_id) if session_id else None)
+        
+        # For form submissions, validate CSRF token from form data
+        if method in self.PROTECTED_METHODS and not self._is_exempt_path(path):
+            # Try to extract CSRF token from form data
+            if hasattr(request.state, 'user') and request.state.user:
+                # This will be handled by individual route handlers
+                # We just ensure the token is available in request state
+                pass
         
         # Log CSRF-protected request
         logger.debug("CSRF-protected request", 

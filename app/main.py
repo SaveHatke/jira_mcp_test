@@ -123,13 +123,21 @@ app = FastAPI(
 )
 
 # Configure CORS (disabled by default for server-rendered app)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[],  # Disabled by default
-    allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
-)
+# CORS is disabled for security as this is a server-rendered application
+# Only enable minimal CORS in development for debugging tools
+if settings.debug:
+    # Very restrictive CORS even in development
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
+        allow_credentials=False,  # Disabled for security
+        allow_methods=["GET"],  # Only GET requests
+        allow_headers=["Content-Type", "X-Request-ID"],
+    )
+else:
+    # Production: CORS completely disabled for security
+    # Server-rendered applications don't need CORS
+    pass
 
 # Add custom middleware for authentication and security
 from app.middleware import (
@@ -163,8 +171,26 @@ app.include_router(dashboard_router)
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Setup Jinja2 templates
+# Setup Jinja2 templates with auto-escaping enabled for XSS prevention
 templates = Jinja2Templates(directory="templates")
+
+# Configure Jinja2 environment for security
+templates.env.autoescape = True  # Enable auto-escaping for XSS prevention
+templates.env.trim_blocks = True
+templates.env.lstrip_blocks = True
+
+# Add security-related template globals
+def csrf_token():
+    """Template function to generate CSRF tokens."""
+    from app.utils.csrf import generate_csrf_token
+    return generate_csrf_token()
+
+def is_development():
+    """Template function to check if in development mode."""
+    return settings.debug
+
+templates.env.globals['csrf_token'] = csrf_token
+templates.env.globals['is_development'] = is_development
 
 
 @app.middleware("http")
