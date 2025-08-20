@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     # Logging settings
     log_level: str = Field(default="INFO", description="Logging level")
     json_logs: bool = Field(default=True, description="Enable JSON logging")
+    log_file: str = Field(default="logs/app.log", description="Log file path")
     
     # External service settings
     jira_timeout_seconds: int = Field(default=30, description="Jira API timeout")

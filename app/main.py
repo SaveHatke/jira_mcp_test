@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 import structlog
 import uuid
 import sys
@@ -30,7 +30,8 @@ except ImportError as e:
 # Setup structured logging
 configure_logging(
     level=settings.log_level,
-    json_logs=settings.json_logs
+    json_logs=settings.json_logs,
+    log_file=settings.log_file
 )
 logger = get_logger(__name__)
 
@@ -90,6 +91,14 @@ app.add_middleware(
 
 # Include routers
 app.include_router(config_management_router)
+
+# Import and include authentication router
+from app.controllers.auth_controller import router as auth_router
+app.include_router(auth_router)
+
+# Import and include dashboard router
+from app.controllers.dashboard_controller import router as dashboard_router
+app.include_router(dashboard_router)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -186,9 +195,18 @@ async def configuration_status():
 
 
 @app.get("/")
-async def root():
-    """Root endpoint - will redirect to login/dashboard based on auth."""
-    return {"message": "Jira Intelligence Agent", "status": "running"}
+async def root(request: Request):
+    """Root endpoint - redirect to login/dashboard based on auth."""
+    from app.controllers.auth_controller import get_current_user
+    
+    # Check if user is authenticated
+    user = await get_current_user(request)
+    if user:
+        # Redirect to dashboard if authenticated
+        return RedirectResponse(url="/dashboard", status_code=302)
+    else:
+        # Redirect to login if not authenticated
+        return RedirectResponse(url="/auth/login", status_code=302)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ fastapi
 uvicorn[standard]
 jinja2
 python-multipart  # Required for FastAPI form handling
-pydantic          # Core dependency for FastAPI
+pydantic[email]   # Core dependency for FastAPI with email validation
 
 # Database and ORM
 sqlalchemy

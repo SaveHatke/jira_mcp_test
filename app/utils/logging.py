@@ -170,7 +170,8 @@ def json_serializer(obj: Any, **kwargs) -> str:
 def configure_logging(
     level: str = "INFO",
     json_logs: bool = True,
-    include_stdlib: bool = False
+    include_stdlib: bool = False,
+    log_file: Optional[str] = None
 ) -> None:
     """
     Configure structured logging for the application.
@@ -179,6 +180,7 @@ def configure_logging(
         level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         json_logs: Whether to output logs in JSON format
         include_stdlib: Whether to include stdlib logs in structured format
+        log_file: Optional path to log file for persistent logging
     """
     # Configure structlog
     processors = [
@@ -195,19 +197,80 @@ def configure_logging(
             structlog.dev.ConsoleRenderer(colors=True),
         ])
     
+    # Create a custom logger factory that writes to both console and file
+    class MultiWriteLoggerFactory:
+        def __init__(self, file_path=None):
+            self.file_path = file_path
+            self._file_handle = None
+            if file_path:
+                import os
+                log_dir = os.path.dirname(file_path)
+                if log_dir and not os.path.exists(log_dir):
+                    os.makedirs(log_dir, exist_ok=True)
+                self._file_handle = open(file_path, 'a', encoding='utf-8')
+        
+        def __call__(self, name):
+            return MultiWriteLogger(self._file_handle)
+    
+    class MultiWriteLogger:
+        def __init__(self, file_handle=None):
+            self.file_handle = file_handle
+        
+        def msg(self, message):
+            # Write to console
+            print(message, file=sys.stdout)
+            # Write to file if available
+            if self.file_handle:
+                print(message, file=self.file_handle)
+                self.file_handle.flush()
+        
+        def debug(self, message): self.msg(message)
+        def info(self, message): self.msg(message)
+        def warning(self, message): self.msg(message)
+        def error(self, message): self.msg(message)
+        def critical(self, message): self.msg(message)
+    
     structlog.configure(
         processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(
             getattr(logging, level.upper())
         ),
-        logger_factory=structlog.WriteLoggerFactory(),
+        logger_factory=MultiWriteLoggerFactory(log_file),
         cache_logger_on_first_use=True,
     )
     
     # Configure standard library logging
+    import os
+    from logging.handlers import RotatingFileHandler
+    
+    # Create logs directory if it doesn't exist
+    if log_file:
+        log_dir = os.path.dirname(log_file)
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+    
+    # Configure handlers
+    handlers = []
+    
+    # Console handler (always present)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(getattr(logging, level.upper()))
+    handlers.append(console_handler)
+    
+    # File handler (if log_file specified)
+    if log_file:
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=10 * 1024 * 1024,  # 10MB
+            backupCount=5,
+            encoding='utf-8'
+        )
+        file_handler.setLevel(getattr(logging, level.upper()))
+        handlers.append(file_handler)
+    
     logging.basicConfig(
         format="%(message)s" if json_logs else "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        stream=sys.stdout,
+        handlers=handlers,
         level=getattr(logging, level.upper()),
     )
     

@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+
+{% block title %}Register - Jira Intelligence Agent{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div class="sm:mx-auto sm:w-full sm:max-w-md">
+        <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+            Create Your Account
+        </h2>
+        <p class="mt-2 text-center text-sm text-gray-600">
+            Register with your Jira Personal Access Token
+        </p>
+    </div>
+
+    <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div class="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+
+            {% if step == "pat_entry" %}
+            <!-- Step 1: Jira PAT Entry -->
+            <form method="post" action="/auth/register/validate-pat" class="space-y-6">
+                <div>
+                    <label for="jira_pat" class="block text-sm font-medium text-gray-700">
+                        Jira Personal Access Token
+                    </label>
+                    <div class="mt-1">
+                        <input id="jira_pat" name="jira_pat" type="password" required value="{{ jira_pat or '' }}"
+                            class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            placeholder="Enter your Jira PAT">
+                    </div>
+                    <p class="mt-2 text-sm text-gray-500">
+                        Please provide your Jira personal access token
+                    </p>
+                </div>
+
+                <div>
+                    <label for="jira_url" class="block text-sm font-medium text-gray-700">
+                        Jira URL (Optional)
+                    </label>
+                    <div class="mt-1">
+                        <input id="jira_url" name="jira_url" type="url" value="{{ jira_url or '' }}"
+                            class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            placeholder="https://your-company.atlassian.net">
+                    </div>
+                    <p class="mt-2 text-sm text-gray-500">
+                        Optional: Provide your Jira base URL if known
+                    </p>
+                </div>
+
+                {% if error %}
+                <div class="rounded-md bg-red-50 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">
+                                Registration Error
+                            </h3>
+                            <div class="mt-2 text-sm text-red-700">
+                                {{ error }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div>
+                    <button type="submit"
+                        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Validate PAT & Create Account
+                    </button>
+                </div>
+            </form>
+
+            {% elif step == "user_confirmation" %}
+            <!-- Step 2: User Confirmation -->
+            {% if success_message %}
+            <div class="rounded-md bg-green-50 p-4 mb-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd"
+                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-green-800">
+                            {{ success_message }}
+                        </h3>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="space-y-4 mb-6">
+                <h3 class="text-lg font-medium text-gray-900">Please confirm your details:</h3>
+
+                <div class="bg-gray-50 p-4 rounded-md">
+                    <dl class="space-y-2">
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Employee ID:</dt>
+                            <dd class="text-sm text-gray-900">{{ user_data.employee_id }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Name:</dt>
+                            <dd class="text-sm text-gray-900">{{ user_data.display_name }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Email Address:</dt>
+                            <dd class="text-sm text-gray-900">{{ user_data.email }}</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm font-medium text-gray-500">Jira URL:</dt>
+                            <dd class="text-sm text-gray-900">{{ jira_url }}</dd>
+                        </div>
+                    </dl>
+                </div>
+            </div>
+
+            <form method="post" action="/auth/register/create-password" class="space-y-6">
+                <!-- Hidden fields to pass data to next step -->
+                <input type="hidden" name="employee_id" value="{{ user_data.employee_id }}">
+                <input type="hidden" name="name" value="{{ user_data.name }}">
+                <input type="hidden" name="email" value="{{ user_data.email }}">
+                <input type="hidden" name="display_name" value="{{ user_data.display_name }}">
+                <input type="hidden" name="avatar_url" value="{{ user_data.avatar_url or '' }}">
+                <input type="hidden" name="jira_url" value="{{ jira_url }}">
+                <input type="hidden" name="jira_pat" value="{{ jira_pat }}">
+
+                <div class="flex space-x-4">
+                    <button type="button" onclick="window.location.href='/auth/register'"
+                        class="flex-1 flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Back
+                    </button>
+                    <button type="submit"
+                        class="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Confirm Details
+                    </button>
+                </div>
+            </form>
+
+            {% elif step == "password_creation" %}
+            <!-- Step 3: Password Creation -->
+            <div class="space-y-4 mb-6">
+                <h3 class="text-lg font-medium text-gray-900">Create Your Password</h3>
+                <p class="text-sm text-gray-600">
+                    Please create a secure password for your account.
+                </p>
+            </div>
+
+            <form method="post" action="/auth/register/complete" class="space-y-6">
+                <!-- Hidden fields to pass user data -->
+                <input type="hidden" name="employee_id" value="{{ user_data.employee_id }}">
+                <input type="hidden" name="name" value="{{ user_data.name }}">
+                <input type="hidden" name="email" value="{{ user_data.email }}">
+                <input type="hidden" name="display_name" value="{{ user_data.display_name }}">
+                <input type="hidden" name="avatar_url" value="{{ user_data.avatar_url or '' }}">
+                <input type="hidden" name="jira_url" value="{{ jira_url }}">
+                <input type="hidden" name="jira_pat" value="{{ jira_pat }}">
+
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700">
+                        Password
+                    </label>
+                    <div class="mt-1">
+                        <input id="password" name="password" type="password" required
+                            class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            placeholder="Enter your password">
+                    </div>
+                </div>
+
+                <div>
+                    <label for="confirm_password" class="block text-sm font-medium text-gray-700">
+                        Confirm Password
+                    </label>
+                    <div class="mt-1">
+                        <input id="confirm_password" name="confirm_password" type="password" required
+                            class="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            placeholder="Confirm your password">
+                    </div>
+                </div>
+
+                <div class="bg-blue-50 p-4 rounded-md">
+                    <h4 class="text-sm font-medium text-blue-800 mb-2">Password Requirements:</h4>
+                    <ul class="text-sm text-blue-700 space-y-1">
+                        <li>• Minimum 8 characters long</li>
+                        <li>• At least one uppercase letter</li>
+                        <li>• At least one lowercase letter</li>
+                        <li>• At least one number</li>
+                        <li>• At least one special character (!@#$%^&*(),.?":{}|<>)</li>
+                    </ul>
+                </div>
+
+                {% if error %}
+                <div class="rounded-md bg-red-50 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">
+                                Password Error
+                            </h3>
+                            <div class="mt-2 text-sm text-red-700">
+                                {{ error }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div>
+                    <button type="submit"
+                        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Create Account
+                    </button>
+                </div>
+            </form>
+
+            {% elif step == "success" %}
+            <!-- Step 4: Success -->
+            <div class="text-center">
+                <div class="rounded-md bg-green-50 p-4 mb-6">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-green-800">
+                                {{ success_message }}
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-4">
+                    <p class="text-sm text-gray-600">
+                        Your account has been created successfully. You can now log in with your credentials.
+                    </p>
+
+                    <a href="{{ redirect_url }}"
+                        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Go to Login
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="mt-6">
+                <div class="relative">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-gray-300"></div>
+                    </div>
+                    <div class="relative flex justify-center text-sm">
+                        <span class="px-2 bg-white text-gray-500">Already have an account?</span>
+                    </div>
+                </div>
+
+                <div class="mt-6 text-center">
+                    <a href="/auth/login"
+                        class="text-indigo-600 hover:text-indigo-500 font-medium text-sm underline decoration-2 underline-offset-2 hover:decoration-indigo-500 transition-colors duration-200">
+                        Sign in to your account
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Add client-side password validation feedback
+    document.addEventListener('DOMContentLoaded', function () {
+        const passwordInput = document.getElementById('password');
+        const confirmPasswordInput = document.getElementById('confirm_password');
+
+        if (passwordInput && confirmPasswordInput) {
+            function validatePassword() {
+                const password = passwordInput.value;
+                const confirmPassword = confirmPasswordInput.value;
+
+                // Basic validation feedback could be added here
+                if (password && confirmPassword && password !== confirmPassword) {
+                    confirmPasswordInput.setCustomValidity('Passwords do not match');
+                } else {
+                    confirmPasswordInput.setCustomValidity('');
+                }
+            }
+
+            passwordInput.addEventListener('input', validatePassword);
+            confirmPasswordInput.addEventListener('input', validatePassword);
+        }
+    });
+</script>
+{% endblock %}
