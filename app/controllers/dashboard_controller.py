@@ -42,7 +42,34 @@ async def show_dashboard(
                session_id=session_info.get('session_id'))
     
     # Check if user has completed configuration
-    configuration_complete = user.is_configuration_complete()
+    # We need to reload the user with relationships to avoid DetachedInstanceError
+    try:
+        from app.database import get_session
+        from sqlalchemy.orm import selectinload
+        from sqlalchemy import select
+        
+        async with get_session() as db_session:
+            # Reload user with relationships
+            stmt = select(User).options(
+                selectinload(User.llm_config),
+                selectinload(User.confluence_config)
+            ).where(User.id == user.id)
+            
+            result = await db_session.execute(stmt)
+            fresh_user = result.scalar_one_or_none()
+            
+            if fresh_user:
+                configuration_complete = fresh_user.is_configuration_complete()
+            else:
+                configuration_complete = False
+                
+    except Exception as e:
+        logger.error("Error checking user configuration", 
+                    user_id=user.id,
+                    error=str(e),
+                    exc_info=True)
+        # Fallback: assume configuration is not complete
+        configuration_complete = False
     
     return templates.TemplateResponse(
         "dashboard/index.html",

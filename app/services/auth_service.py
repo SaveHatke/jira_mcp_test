@@ -242,7 +242,19 @@ class AuthenticationService:
                 user = result.scalar_one_or_none()
                 
                 if not user:
-                    logger.warning("User not found for authentication", username=username)
+                    logger.warning("User not found for authentication", 
+                                  username=username,
+                                  search_criteria="employee_id, name, or email")
+                    
+                    # Debug: Check if any users exist at all
+                    count_stmt = select(User).where(User.active == True)
+                    count_result = await session.execute(count_stmt)
+                    all_users = count_result.scalars().all()
+                    
+                    logger.debug("Available users for debugging", 
+                                total_active_users=len(all_users),
+                                user_employee_ids=[u.employee_id for u in all_users[:5]])  # Show first 5
+                    
                     return None
                 
                 # Verify password

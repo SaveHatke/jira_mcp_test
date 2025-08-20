@@ -383,10 +383,14 @@ async def login_user(
     with configurable expiration time and proper security measures.
     """
     try:
-        # Validate CSRF token
+        # Validate CSRF token (for login, we don't require session-based validation)
         from app.utils.csrf import validate_csrf_token
-        if not validate_csrf_token(csrf_token):
+        if not validate_csrf_token(csrf_token, session_id=None):
             logger.warning("CSRF token validation failed during login", username=username)
+            
+            # Generate a new CSRF token for the error response
+            from app.utils.csrf import generate_csrf_token
+            new_csrf_token = generate_csrf_token()
             
             return templates.TemplateResponse(
                 "auth/login.html",
@@ -394,7 +398,7 @@ async def login_user(
                     "request": request,
                     "error": "Security validation failed. Please try again.",
                     "username": username,
-                    "csrf_token": getattr(request.state, 'csrf_token', '')
+                    "csrf_token": new_csrf_token
                 }
             )
         
