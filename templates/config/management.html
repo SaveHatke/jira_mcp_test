@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Configuration Management</h1>
+            <p class="text-gray-600">Manage JSON configuration files for the AI Jira Confluence Agent</p>
+        </div>
+
+        <!-- Status Overview -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-semibold text-gray-900 mb-4">System Status</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <div class="text-sm font-medium text-gray-500">Configuration Directory</div>
+                    <div class="text-lg font-semibold text-gray-900">
+                        {% if config_status.directory_exists %}
+                            <span class="text-green-600">[OK]</span> Found
+                        {% else %}
+                            <span class="text-red-600">[ERROR]</span> Missing
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <div class="text-sm font-medium text-gray-500">Service Status</div>
+                    <div class="text-lg font-semibold text-gray-900">
+                        {% if config_status.service_initialized %}
+                            <span class="text-green-600">[OK]</span> Active
+                        {% else %}
+                            <span class="text-red-600">[ERROR]</span> Inactive
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <div class="text-sm font-medium text-gray-500">File Watcher</div>
+                    <div class="text-lg font-semibold text-gray-900">
+                        {% if config_status.get('service_status', {}).get('watcher_active', False) %}
+                            <span class="text-green-600">[OK]</span> Running
+                        {% else %}
+                            <span class="text-yellow-600">[WARNING]</span> Stopped
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <div class="text-sm font-medium text-gray-500">Configuration Files</div>
+                    <div class="text-lg font-semibold text-gray-900">
+                        {% set valid_files = config_status.required_files.values() | selectattr('exists') | list | length %}
+                        {% if valid_files == 4 %}
+                            <span class="text-green-600">[OK]</span> {{ valid_files }}/4
+                        {% else %}
+                            <span class="text-red-600">[ERROR]</span> {{ valid_files }}/4
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-wrap gap-4">
+                <button 
+                    onclick="validateConfigurations()" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                    Validate All
+                </button>
+                <button 
+                    onclick="reloadConfigurations()" 
+                    class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                    Reload Configurations
+                </button>
+                <button 
+                    onclick="testLLMConfig()" 
+                    class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                    Test LLM Connection
+                </button>
+                <button 
+                    onclick="refreshStatus()" 
+                    class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                    Refresh Status
+                </button>
+            </div>
+        </div>
+
+        <!-- Configuration Files -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Main Configuration -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Main Configuration (config.json)</h3>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-medium text-gray-500">Status:</span>
+                        {% if config_status.required_files.get('config.json', {}).get('exists', False) %}
+                            <span class="text-green-600 font-medium">[OK] Loaded</span>
+                        {% else %}
+                            <span class="text-red-600 font-medium">[ERROR] Missing</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-medium text-gray-500">LLM Endpoints:</span>
+                        <span class="text-gray-900">{{ configs.get('main', {}).get('llm', {}).keys() | length }} configured</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-medium text-gray-500">Debug Logging:</span>
+                        <span class="text-gray-900">
+                            {% if configs.get('main', {}).get('llm', {}).get('debug_logging', False) %}
+                                Enabled
+                            {% else %}
+                                Disabled
+                            {% endif %}
+                        </span>
+                    </div>
+                </div>
+                <button 
+                    onclick="viewConfig('main')" 
+                    class="mt-4 w-full bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                    View Configuration
+                </button>
+            </div>
+
+            <!-- Headers Configuration -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Headers Configuration (header.json)</h3>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-medium text-gray-500">Status:</span>
+                        {% if config_status.required_files.get('header.json', {}).get('exists', False) %}
+                            <span class="text-green-600 font-medium">[OK] Loaded</span>
+                        {% else %}
+                            <span class="text-red-600 font-medium">[ERROR] Missing</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-medium text-gray-500">Header Sets:</span>
+                        <span class="text-gray-900">{{ configs.get('headers', {}).keys() | length }} configured</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-medium text-gray-500">Auth Type:</span>
+                        <span class="text-gray-900">{{ configs.get('headers', {}).get('authentication', {}).get('type', 'Unknown') }}</span>
+                    </div>
+                </div>
+                <button 
+                    onclick="viewConfig('headers')" 
+                    class="mt-4 w-full bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                    View Configuration
+                </button>
+            </div>
+
+            <!-- Payloads Configuration -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Payloads Configuration (payload.json)</h3>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-medium text-gray-500">Status:</span>
+                        {% if config_status.required_files.get('payload.json', {}).get('exists', False) %}
+                            <span class="text-green-600 font-medium">[OK] Loaded</span>
+                        {% else %}
+                            <span class="text-red-600 font-medium">[ERROR] Missing</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-medium text-gray-500">Payload Templates:</span>
+                        <span class="text-gray-900">{{ configs.get('payloads', {}).keys() | length }} configured</span>
+                    </div>
+                </div>
+                <button 
+                    onclick="viewConfig('payloads')" 
+                    class="mt-4 w-full bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                    View Configuration
+                </button>
+            </div>
+
+            <!-- Prompts Configuration -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Prompts Configuration (prompts.json)</h3>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-medium text-gray-500">Status:</span>
+                        {% if config_status.required_files.get('prompts.json', {}).get('exists', False) %}
+                            <span class="text-green-600 font-medium">[OK] Loaded</span>
+                        {% else %}
+                            <span class="text-red-600 font-medium">[ERROR] Missing</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-medium text-gray-500">System Prompts:</span>
+                        <span class="text-gray-900">{{ configs.get('prompts', {}).get('system_prompts', {}).keys() | length }} configured</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm font-medium text-gray-500">Custom Prompts:</span>
+                        <span class="text-gray-900">{{ configs.get('prompts', {}).get('custom_prompts', {}).keys() | length }} configured</span>
+                    </div>
+                </div>
+                <button 
+                    onclick="viewConfig('prompts')" 
+                    class="mt-4 w-full bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                    View Configuration
+                </button>
+            </div>
+        </div>
+
+        <!-- Results Area -->
+        <div id="results-area" class="mt-8 hidden">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Results</h3>
+                <div id="results-content" class="bg-gray-50 rounded-lg p-4 font-mono text-sm overflow-x-auto">
+                    <!-- Results will be displayed here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Configuration management JavaScript functions
+async function validateConfigurations() {
+    showResults('[INFO] Validating configurations...');
+    
+    try {
+        const response = await fetch('/config-management/validate');
+        const result = await response.json();
+        
+        if (result.valid) {
+            showResults('[SUCCESS] All configurations are valid');
+        } else {
+            showResults('[ERROR] Configuration validation failed:\n' + result.errors.join('\n'));
+        }
+    } catch (error) {
+        showResults('[ERROR] Failed to validate configurations: ' + error.message);
+    }
+}
+
+async function reloadConfigurations() {
+    showResults('[INFO] Reloading configurations...');
+    
+    try {
+        const response = await fetch('/config-management/reload', { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+            showResults('[SUCCESS] ' + result.message);
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showResults('[ERROR] ' + result.message);
+        }
+    } catch (error) {
+        showResults('[ERROR] Failed to reload configurations: ' + error.message);
+    }
+}
+
+async function testLLMConfig() {
+    showResults('[INFO] Testing LLM configuration...');
+    
+    try {
+        const response = await fetch('/config-management/test-llm-config', { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.success) {
+            showResults('[SUCCESS] ' + result.message + '\nEndpoint: ' + result.endpoint + '\nResponse time: ' + result.response_time_ms + 'ms');
+        } else {
+            showResults('[ERROR] ' + result.message);
+        }
+    } catch (error) {
+        showResults('[ERROR] Failed to test LLM configuration: ' + error.message);
+    }
+}
+
+async function refreshStatus() {
+    showResults('[INFO] Refreshing status...');
+    location.reload();
+}
+
+async function viewConfig(configName) {
+    showResults('[INFO] Loading ' + configName + ' configuration...');
+    
+    try {
+        const response = await fetch('/config-management/config/' + configName);
+        const result = await response.json();
+        
+        showResults('[OK] Configuration: ' + configName + '\n\n' + JSON.stringify(result.data, null, 2));
+    } catch (error) {
+        showResults('[ERROR] Failed to load configuration: ' + error.message);
+    }
+}
+
+function showResults(content) {
+    const resultsArea = document.getElementById('results-area');
+    const resultsContent = document.getElementById('results-content');
+    
+    resultsContent.textContent = content;
+    resultsArea.classList.remove('hidden');
+    
+    // Scroll to results
+    resultsArea.scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+{% endblock %}

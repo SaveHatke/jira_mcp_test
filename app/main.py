@@ -1,15 +1,20 @@
 """FastAPI application entry point with health endpoints."""
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import structlog
 import uuid
+import sys
 from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.utils.logging import configure_logging, get_logger
+from app.utils.config_loader import initialize_app_configuration
+from app.services.config_service import get_config_service
+from app.controllers.config_management_controller import router as config_management_router
 
 # Try to import database functionality - fallback if compatibility issues
 try:
@@ -35,6 +40,14 @@ async def lifespan(app: FastAPI):
     """Application lifespan events."""
     # Startup
     logger.info("Starting Jira Intelligence Agent", version="1.0.0")
+    
+    # Initialize configuration system first
+    try:
+        initialize_app_configuration()
+        logger.info("Configuration system initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize configuration system", error=str(e))
+        sys.exit(1)
     
     if DATABASE_AVAILABLE and db_manager:
         try:
@@ -75,6 +88,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include routers
+app.include_router(config_management_router)
+
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -107,28 +123,40 @@ async def health_check():
 async def readiness_check():
     """Readiness probe endpoint."""
     try:
+        # Check configuration system
+        try:
+            config_service = get_config_service()
+            validation_results = config_service.validate_all_configs()
+            failed_validations = [name for name, result in validation_results.items() if not result]
+            config_ready = len(failed_validations) == 0
+            config_status = "ready" if config_ready else f"validation_failed: {failed_validations}"
+        except Exception:
+            config_ready = False
+            config_status = "not_available"
+        
         if DATABASE_AVAILABLE and db_manager:
             # Check database health
             db_health = await db_manager.health_check()
             
             is_ready = (
                 db_health.get("initialized", False) and
-                db_health.get("connectivity", False)
+                db_health.get("connectivity", False) and
+                config_ready
             )
             
             return {
                 "status": "ready" if is_ready else "not_ready",
                 "service": settings.app_name,
                 "database": db_health,
-                "configuration": "loaded"
+                "configuration": config_status
             }
         else:
             # No database - basic readiness
             return {
-                "status": "ready",
+                "status": "ready" if config_ready else "not_ready",
                 "service": settings.app_name,
                 "database": "not_available_compatibility_mode",
-                "configuration": "loaded",
+                "configuration": config_status,
                 "note": "Running without database due to compatibility issues"
             }
     
@@ -139,6 +167,22 @@ async def readiness_check():
             "service": settings.app_name,
             "error": str(e)
         }
+
+
+@app.get("/config-status")
+async def configuration_status():
+    """Get current configuration system status."""
+    try:
+        config_service = get_config_service()
+        status = config_service.get_config_status()
+        return JSONResponse(content=status)
+        
+    except Exception as e:
+        logger.error("Error getting configuration status", error=str(e))
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to get configuration status: {e}"}
+        )
 
 
 @app.get("/")

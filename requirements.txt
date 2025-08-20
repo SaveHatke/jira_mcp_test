@@ -47,6 +47,7 @@ mcp-atlassian
 # Utilities
 python-dateutil    # For date/time handling
 typing-extensions  # Enhanced type hints
+watchdog          # File system monitoring for config changes
 
 # Development and Testing
 pytest

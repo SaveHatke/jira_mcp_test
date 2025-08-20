@@ -1,7 +1,10 @@
 #Custom
 .kiro/
 .env.*
+
+# Exclude markdown files except in reference directory
 *.md
+!reference/**/*.md
 
 # Python
 __pycache__/

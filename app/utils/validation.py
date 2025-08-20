@@ -1,515 +1,275 @@
 """
-Input validation utilities with security best practices.
-
-This module provides comprehensive input validation, sanitization,
-and security utilities following enterprise security standards.
+Configuration validation utilities.
+Provides validation for JSON configuration files.
 """
 
+from typing import Dict, Any, List
 import re
-import html
-import urllib.parse
-from typing import Any, Dict, List, Optional, Union, Pattern
-from email_validator import validate_email, EmailNotValidError
-from pydantic import BaseModel, Field, validator
-import bleach
+from urllib.parse import urlparse
 
-from app.exceptions import ValidationError
-from app.utils.logging import get_logger
-
-logger = get_logger(__name__)
-
-# Security patterns
-MALICIOUS_PATTERNS = [
-    # SQL injection patterns
-    re.compile(r"(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|UNION)\b)", re.IGNORECASE),
-    # XSS patterns
-    re.compile(r"<script[^>]*>.*?</script>", re.IGNORECASE | re.DOTALL),
-    re.compile(r"javascript:", re.IGNORECASE),
-    re.compile(r"on\w+\s*=", re.IGNORECASE),
-    # Path traversal
-    re.compile(r"\.\./"),
-    re.compile(r"\.\.\\"),
-    # Command injection
-    re.compile(r"[;&|`$]"),
-    # LDAP injection
-    re.compile(r"[()=*!&|]"),
-]
-
-# Allowed HTML tags for rich text (if needed)
-ALLOWED_HTML_TAGS = [
-    'p', 'br', 'strong', 'em', 'u', 'ol', 'ul', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'
-]
-
-ALLOWED_HTML_ATTRIBUTES = {
-    '*': ['class'],
-}
+from app.exceptions import ConfigurationError
 
 
-class ValidationRules:
-    """Common validation rules and patterns."""
+class ConfigValidator:
+    """Validator for configuration files."""
     
-    # Email validation
-    EMAIL_PATTERN = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    def __init__(self):
+        self.validation_rules = {
+            'main': self._validate_main_config,
+            'headers': self._validate_headers_config,
+            'payloads': self._validate_payloads_config,
+            'prompts': self._validate_prompts_config
+        }
     
-    # Password strength requirements
-    PASSWORD_MIN_LENGTH = 8
-    PASSWORD_PATTERN = re.compile(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]')
-    
-    # URL validation
-    URL_PATTERN = re.compile(
-        r'^https?://'  # http:// or https://
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain...
-        r'localhost|'  # localhost...
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
-        r'(?::\d+)?'  # optional port
-        r'(?:/?|[/?]\S+)$', re.IGNORECASE
-    )
-    
-    # Employee ID patterns (alphanumeric, 3-20 chars)
-    EMPLOYEE_ID_PATTERN = re.compile(r'^[A-Za-z0-9]{3,20}$')
-    
-    # Project key pattern (Jira format: 2-10 uppercase letters)
-    PROJECT_KEY_PATTERN = re.compile(r'^[A-Z]{2,10}$')
-    
-    # API token patterns (base64-like, 20-500 chars)
-    API_TOKEN_PATTERN = re.compile(r'^[A-Za-z0-9+/=]{20,500}$')
-
-
-def sanitize_string(value: str, max_length: Optional[int] = None) -> str:
-    """
-    Sanitize string input to prevent injection attacks.
-    
-    Args:
-        value: Input string to sanitize
-        max_length: Maximum allowed length
+    def validate_config(self, config_name: str, config_data: Dict[str, Any]) -> None:
+        """Validate configuration data."""
+        if config_name not in self.validation_rules:
+            raise ConfigurationError(f"No validation rules for config: {config_name}")
         
-    Returns:
-        Sanitized string
+        validator_func = self.validation_rules[config_name]
+        validator_func(config_data)
+    
+    def _validate_main_config(self, config: Dict[str, Any]) -> None:
+        """Validate main configuration file."""
+        # Validate LLM configuration
+        if 'llm' not in config:
+            raise ConfigurationError("Missing 'llm' section in main config")
         
-    Raises:
-        ValidationError: If input contains malicious patterns
-    """
-    if not isinstance(value, str):
-        value = str(value)
-    
-    # Remove null bytes and control characters
-    sanitized = value.replace('\x00', '').replace('\r', '')
-    
-    # Normalize line endings
-    sanitized = sanitized.replace('\r\n', '\n').replace('\r', '\n')
-    
-    # Check for malicious patterns
-    for pattern in MALICIOUS_PATTERNS:
-        if pattern.search(sanitized):
-            logger.warning(
-                "Malicious pattern detected in input",
-                pattern=pattern.pattern,
-                input_preview=sanitized[:50]
-            )
-            raise ValidationError(
-                "Input contains potentially malicious content",
-                validation_rule="malicious_pattern_check",
-                error_code="MALICIOUS_INPUT_DETECTED"
-            )
-    
-    # Trim whitespace
-    sanitized = sanitized.strip()
-    
-    # Check length
-    if max_length and len(sanitized) > max_length:
-        raise ValidationError(
-            f"Input exceeds maximum length of {max_length} characters",
-            validation_rule="max_length",
-            error_code="INPUT_TOO_LONG",
-            details={"max_length": max_length, "actual_length": len(sanitized)}
-        )
-    
-    return sanitized
-
-
-def sanitize_html(value: str, strip_tags: bool = False) -> str:
-    """
-    Sanitize HTML content to prevent XSS attacks.
-    
-    Args:
-        value: HTML content to sanitize
-        strip_tags: Whether to strip all HTML tags
+        llm_config = config['llm']
         
-    Returns:
-        Sanitized HTML content
-    """
-    if not isinstance(value, str):
-        value = str(value)
-    
-    if strip_tags:
-        # Strip all HTML tags
-        return bleach.clean(value, tags=[], strip=True)
-    else:
-        # Allow only safe HTML tags
-        return bleach.clean(
-            value,
-            tags=ALLOWED_HTML_TAGS,
-            attributes=ALLOWED_HTML_ATTRIBUTES,
-            strip=True
-        )
-
-
-def validate_email_address(email: str) -> str:
-    """
-    Validate and normalize email address.
-    
-    Args:
-        email: Email address to validate
+        # Validate endpoints
+        self._validate_endpoint_config(llm_config, 'test_endpoint')
+        self._validate_endpoint_config(llm_config, 'integration_endpoint')
         
-    Returns:
-        Normalized email address
+        # Validate parameters
+        if 'parameters' not in llm_config:
+            raise ConfigurationError("Missing 'parameters' in LLM config")
         
-    Raises:
-        ValidationError: If email is invalid
-    """
-    if not email or not isinstance(email, str):
-        raise ValidationError(
-            "Email address is required",
-            field_name="email",
-            validation_rule="required",
-            error_code="EMAIL_REQUIRED"
-        )
-    
-    email = email.strip().lower()
-    
-    try:
-        # Use email-validator library for comprehensive validation
-        validated_email = validate_email(email)
-        return validated_email.email
-    except EmailNotValidError as e:
-        raise ValidationError(
-            f"Invalid email address: {str(e)}",
-            field_name="email",
-            validation_rule="email_format",
-            error_code="INVALID_EMAIL_FORMAT"
-        ) from e
-
-
-def validate_password(password: str) -> str:
-    """
-    Validate password strength requirements.
-    
-    Args:
-        password: Password to validate
+        params = llm_config['parameters']
+        required_params = ['model', 'temperature', 'max_tokens']
+        for param in required_params:
+            if param not in params:
+                raise ConfigurationError(f"Missing required parameter: {param}")
         
-    Returns:
-        Validated password
+        # Validate temperature range
+        temp = params.get('temperature')
+        if not isinstance(temp, (int, float)) or temp < 0 or temp > 2:
+            raise ConfigurationError("Temperature must be between 0 and 2")
         
-    Raises:
-        ValidationError: If password doesn't meet requirements
-    """
-    if not password or not isinstance(password, str):
-        raise ValidationError(
-            "Password is required",
-            field_name="password",
-            validation_rule="required",
-            error_code="PASSWORD_REQUIRED"
-        )
-    
-    # Check minimum length
-    if len(password) < ValidationRules.PASSWORD_MIN_LENGTH:
-        raise ValidationError(
-            f"Password must be at least {ValidationRules.PASSWORD_MIN_LENGTH} characters long",
-            field_name="password",
-            validation_rule="min_length",
-            error_code="PASSWORD_TOO_SHORT",
-            details={"min_length": ValidationRules.PASSWORD_MIN_LENGTH}
-        )
-    
-    # Check complexity requirements
-    if not ValidationRules.PASSWORD_PATTERN.match(password):
-        raise ValidationError(
-            "Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character",
-            field_name="password",
-            validation_rule="complexity",
-            error_code="PASSWORD_INSUFFICIENT_COMPLEXITY"
-        )
-    
-    return password
-
-
-def validate_url(url: str, require_https: bool = False) -> str:
-    """
-    Validate URL format and security.
-    
-    Args:
-        url: URL to validate
-        require_https: Whether to require HTTPS protocol
+        # Validate max_tokens
+        max_tokens = params.get('max_tokens')
+        if not isinstance(max_tokens, int) or max_tokens <= 0:
+            raise ConfigurationError("max_tokens must be a positive integer")
         
-    Returns:
-        Validated URL
+        # Validate file paths
+        required_files = ['header_file', 'payload_file', 'prompts_file']
+        for file_key in required_files:
+            if file_key not in llm_config:
+                raise ConfigurationError(f"Missing file path: {file_key}")
+            
+            file_path = llm_config[file_key]
+            if not isinstance(file_path, str) or not file_path.endswith('.json'):
+                raise ConfigurationError(f"Invalid file path for {file_key}: {file_path}")
         
-    Raises:
-        ValidationError: If URL is invalid or insecure
-    """
-    if not url or not isinstance(url, str):
-        raise ValidationError(
-            "URL is required",
-            field_name="url",
-            validation_rule="required",
-            error_code="URL_REQUIRED"
-        )
-    
-    url = url.strip()
-    
-    # Basic URL format validation
-    if not ValidationRules.URL_PATTERN.match(url):
-        raise ValidationError(
-            "Invalid URL format",
-            field_name="url",
-            validation_rule="url_format",
-            error_code="INVALID_URL_FORMAT"
-        )
-    
-    # Check for HTTPS requirement
-    if require_https and not url.startswith('https://'):
-        raise ValidationError(
-            "HTTPS is required for this URL",
-            field_name="url",
-            validation_rule="https_required",
-            error_code="HTTPS_REQUIRED"
-        )
-    
-    # Check for suspicious domains or IPs
-    parsed = urllib.parse.urlparse(url)
-    hostname = parsed.hostname
-    
-    if hostname:
-        # Block localhost and private IPs in production
-        if hostname in ['localhost', '127.0.0.1', '0.0.0.0']:
-            logger.warning("Localhost URL detected", url=url)
+        # Validate cache configuration
+        if 'cache' in config:
+            cache_config = config['cache']
+            if 'tool_list_ttl' in cache_config:
+                ttl = cache_config['tool_list_ttl']
+                if not isinstance(ttl, int) or ttl <= 0:
+                    raise ConfigurationError("tool_list_ttl must be a positive integer")
         
-        # Block private IP ranges (basic check)
-        if hostname.startswith(('10.', '172.', '192.168.')):
-            logger.warning("Private IP URL detected", url=url, hostname=hostname)
+        # Validate background jobs configuration
+        if 'background_jobs' in config:
+            jobs_config = config['background_jobs']
+            if 'max_retries' in jobs_config:
+                retries = jobs_config['max_retries']
+                if not isinstance(retries, int) or retries < 0:
+                    raise ConfigurationError("max_retries must be a non-negative integer")
     
-    return url
-
-
-def validate_employee_id(employee_id: str) -> str:
-    """
-    Validate employee ID format.
-    
-    Args:
-        employee_id: Employee ID to validate
+    def _validate_endpoint_config(self, llm_config: Dict[str, Any], endpoint_key: str) -> None:
+        """Validate endpoint configuration."""
+        if endpoint_key not in llm_config:
+            raise ConfigurationError(f"Missing '{endpoint_key}' in LLM config")
         
-    Returns:
-        Validated employee ID
+        endpoint = llm_config[endpoint_key]
         
-    Raises:
-        ValidationError: If employee ID is invalid
-    """
-    if not employee_id or not isinstance(employee_id, str):
-        raise ValidationError(
-            "Employee ID is required",
-            field_name="employee_id",
-            validation_rule="required",
-            error_code="EMPLOYEE_ID_REQUIRED"
-        )
-    
-    employee_id = employee_id.strip()
-    
-    if not ValidationRules.EMPLOYEE_ID_PATTERN.match(employee_id):
-        raise ValidationError(
-            "Employee ID must be 3-20 alphanumeric characters",
-            field_name="employee_id",
-            validation_rule="format",
-            error_code="INVALID_EMPLOYEE_ID_FORMAT"
-        )
-    
-    return employee_id
-
-
-def validate_project_key(project_key: str) -> str:
-    """
-    Validate Jira project key format.
-    
-    Args:
-        project_key: Project key to validate
+        # Validate URL
+        if 'url' not in endpoint:
+            raise ConfigurationError(f"Missing 'url' in {endpoint_key}")
         
-    Returns:
-        Validated project key
+        url = endpoint['url']
+        if not self._is_valid_url(url):
+            raise ConfigurationError(f"Invalid URL in {endpoint_key}: {url}")
         
-    Raises:
-        ValidationError: If project key is invalid
-    """
-    if not project_key or not isinstance(project_key, str):
-        raise ValidationError(
-            "Project key is required",
-            field_name="project_key",
-            validation_rule="required",
-            error_code="PROJECT_KEY_REQUIRED"
-        )
-    
-    project_key = project_key.strip().upper()
-    
-    if not ValidationRules.PROJECT_KEY_PATTERN.match(project_key):
-        raise ValidationError(
-            "Project key must be 2-10 uppercase letters",
-            field_name="project_key",
-            validation_rule="format",
-            error_code="INVALID_PROJECT_KEY_FORMAT"
-        )
-    
-    return project_key
-
-
-def validate_api_token(token: str, field_name: str = "token") -> str:
-    """
-    Validate API token format.
-    
-    Args:
-        token: API token to validate
-        field_name: Name of the field for error messages
+        # Validate timeout
+        if 'timeout' not in endpoint:
+            raise ConfigurationError(f"Missing 'timeout' in {endpoint_key}")
         
-    Returns:
-        Validated token
+        timeout = endpoint['timeout']
+        if not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise ConfigurationError(f"Invalid timeout in {endpoint_key}: {timeout}")
         
-    Raises:
-        ValidationError: If token is invalid
-    """
-    if not token or not isinstance(token, str):
-        raise ValidationError(
-            f"{field_name.title()} is required",
-            field_name=field_name,
-            validation_rule="required",
-            error_code="TOKEN_REQUIRED"
-        )
+        # Validate retry settings
+        if 'retry_settings' in endpoint:
+            retry_settings = endpoint['retry_settings']
+            self._validate_retry_settings(retry_settings, endpoint_key)
     
-    token = token.strip()
-    
-    if not ValidationRules.API_TOKEN_PATTERN.match(token):
-        raise ValidationError(
-            f"{field_name.title()} must be 20-500 alphanumeric characters",
-            field_name=field_name,
-            validation_rule="format",
-            error_code="INVALID_TOKEN_FORMAT"
-        )
-    
-    return token
-
-
-class BaseValidationSchema(BaseModel):
-    """Base Pydantic schema with common validation methods."""
-    
-    class Config:
-        # Enable validation on assignment
-        validate_assignment = True
-        # Use enum values instead of enum objects
-        use_enum_values = True
-        # Allow population by field name or alias
-        allow_population_by_field_name = True
-    
-    @validator('*', pre=True)
-    def sanitize_strings(cls, v):
-        """Sanitize all string inputs."""
-        if isinstance(v, str):
-            return sanitize_string(v)
-        return v
-
-
-def validate_file_upload(
-    file_content: bytes,
-    allowed_extensions: List[str],
-    max_size: int = 5 * 1024 * 1024,  # 5MB default
-    filename: Optional[str] = None
-) -> None:
-    """
-    Validate uploaded file content and metadata.
-    
-    Args:
-        file_content: File content as bytes
-        allowed_extensions: List of allowed file extensions
-        max_size: Maximum file size in bytes
-        filename: Original filename (optional)
+    def _validate_retry_settings(self, retry_settings: Dict[str, Any], context: str) -> None:
+        """Validate retry settings."""
+        required_fields = ['max_retries', 'backoff_factor', 'retry_delay']
         
-    Raises:
-        ValidationError: If file validation fails
-    """
-    # Check file size
-    if len(file_content) > max_size:
-        raise ValidationError(
-            f"File size exceeds maximum allowed size of {max_size} bytes",
-            field_name="file",
-            validation_rule="max_size",
-            error_code="FILE_TOO_LARGE",
-            details={"max_size": max_size, "actual_size": len(file_content)}
-        )
+        for field in required_fields:
+            if field not in retry_settings:
+                raise ConfigurationError(f"Missing '{field}' in retry_settings for {context}")
+            
+            value = retry_settings[field]
+            if not isinstance(value, (int, float)) or value < 0:
+                raise ConfigurationError(f"Invalid {field} in retry_settings for {context}: {value}")
     
-    # Check file extension if filename provided
-    if filename:
-        filename = filename.lower()
-        if not any(filename.endswith(ext.lower()) for ext in allowed_extensions):
-            raise ValidationError(
-                f"File type not allowed. Allowed extensions: {', '.join(allowed_extensions)}",
-                field_name="file",
-                validation_rule="file_extension",
-                error_code="INVALID_FILE_TYPE",
-                details={"allowed_extensions": allowed_extensions}
-            )
-    
-    # Basic file content validation (check for null bytes)
-    if b'\x00' in file_content:
-        raise ValidationError(
-            "File contains invalid null bytes",
-            field_name="file",
-            validation_rule="content_validation",
-            error_code="INVALID_FILE_CONTENT"
-        )
-
-
-def validate_json_structure(
-    data: Dict[str, Any],
-    required_fields: List[str],
-    optional_fields: Optional[List[str]] = None
-) -> Dict[str, Any]:
-    """
-    Validate JSON structure against expected schema.
-    
-    Args:
-        data: JSON data to validate
-        required_fields: List of required field names
-        optional_fields: List of optional field names
+    def _validate_headers_config(self, config: Dict[str, Any]) -> None:
+        """Validate headers configuration file."""
+        required_sections = ['test_headers', 'integration_headers', 'authentication']
         
-    Returns:
-        Validated JSON data
+        for section in required_sections:
+            if section not in config:
+                raise ConfigurationError(f"Missing '{section}' in headers config")
         
-    Raises:
-        ValidationError: If JSON structure is invalid
-    """
-    if not isinstance(data, dict):
-        raise ValidationError(
-            "Data must be a JSON object",
-            validation_rule="type_check",
-            error_code="INVALID_JSON_TYPE"
-        )
+        # Validate header sections contain valid HTTP headers
+        for header_section in ['test_headers', 'integration_headers']:
+            headers = config[header_section]
+            if not isinstance(headers, dict):
+                raise ConfigurationError(f"{header_section} must be a dictionary")
+            
+            for header_name, header_value in headers.items():
+                if not isinstance(header_name, str) or not isinstance(header_value, str):
+                    raise ConfigurationError(f"Invalid header in {header_section}: {header_name}")
+        
+        # Validate authentication configuration
+        auth_config = config['authentication']
+        required_auth_fields = ['type', 'cookie_field', 'header_format']
+        
+        for field in required_auth_fields:
+            if field not in auth_config:
+                raise ConfigurationError(f"Missing '{field}' in authentication config")
+        
+        # Validate authentication type
+        auth_type = auth_config['type']
+        if auth_type not in ['cookie', 'bearer', 'basic']:
+            raise ConfigurationError(f"Invalid authentication type: {auth_type}")
+        
+        # Validate header format contains placeholder
+        header_format = auth_config['header_format']
+        if '{cookie_value}' not in header_format:
+            raise ConfigurationError("header_format must contain {cookie_value} placeholder")
     
-    # Check required fields
-    missing_fields = [field for field in required_fields if field not in data]
-    if missing_fields:
-        raise ValidationError(
-            f"Missing required fields: {', '.join(missing_fields)}",
-            validation_rule="required_fields",
-            error_code="MISSING_REQUIRED_FIELDS",
-            details={"missing_fields": missing_fields}
-        )
+    def _validate_payloads_config(self, config: Dict[str, Any]) -> None:
+        """Validate payloads configuration file."""
+        required_payloads = ['test_payload', 'chat_completion', 'story_generation']
+        
+        for payload_name in required_payloads:
+            if payload_name not in config:
+                raise ConfigurationError(f"Missing payload template: {payload_name}")
+            
+            payload = config[payload_name]
+            self._validate_payload_template(payload, payload_name)
     
-    # Check for unexpected fields
-    allowed_fields = set(required_fields)
-    if optional_fields:
-        allowed_fields.update(optional_fields)
+    def _validate_payload_template(self, payload: Dict[str, Any], name: str) -> None:
+        """Validate individual payload template."""
+        required_fields = ['method', 'endpoint']
+        
+        for field in required_fields:
+            if field not in payload:
+                raise ConfigurationError(f"Missing '{field}' in payload template: {name}")
+        
+        # Validate HTTP method
+        method = payload['method']
+        valid_methods = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH']
+        if method not in valid_methods:
+            raise ConfigurationError(f"Invalid HTTP method in {name}: {method}")
+        
+        # Validate endpoint
+        endpoint = payload['endpoint']
+        if not isinstance(endpoint, str) or not endpoint.startswith('/'):
+            raise ConfigurationError(f"Invalid endpoint in {name}: {endpoint}")
+        
+        # Validate body structure for POST requests
+        if method in ['POST', 'PUT', 'PATCH'] and 'body' in payload:
+            body = payload['body']
+            if body is not None and not isinstance(body, dict):
+                raise ConfigurationError(f"Invalid body structure in {name}")
     
-    unexpected_fields = [field for field in data.keys() if field not in allowed_fields]
-    if unexpected_fields:
-        logger.warning(
-            "Unexpected fields in JSON data",
-            unexpected_fields=unexpected_fields,
-            allowed_fields=list(allowed_fields)
-        )
+    def _validate_prompts_config(self, config: Dict[str, Any]) -> None:
+        """Validate prompts configuration file."""
+        required_sections = ['system_instructions', 'system_prompts']
+        
+        for section in required_sections:
+            if section not in config:
+                raise ConfigurationError(f"Missing '{section}' in prompts config")
+            
+            section_data = config[section]
+            if not isinstance(section_data, dict):
+                raise ConfigurationError(f"{section} must be a dictionary")
+            
+            # Validate all prompts are non-empty strings
+            for prompt_name, prompt_text in section_data.items():
+                if not isinstance(prompt_text, str) or not prompt_text.strip():
+                    raise ConfigurationError(f"Invalid prompt in {section}: {prompt_name}")
+        
+        # Validate required system prompts
+        system_prompts = config['system_prompts']
+        required_prompts = ['classic_story', 'bdd_story', 'test_connection']
+        
+        for prompt_name in required_prompts:
+            if prompt_name not in system_prompts:
+                raise ConfigurationError(f"Missing required system prompt: {prompt_name}")
+        
+        # Validate optional sections
+        optional_sections = ['custom_prompts', 'validation_prompts']
+        for section in optional_sections:
+            if section in config:
+                section_data = config[section]
+                if not isinstance(section_data, dict):
+                    raise ConfigurationError(f"{section} must be a dictionary")
+                
+                for prompt_name, prompt_text in section_data.items():
+                    if not isinstance(prompt_text, str) or not prompt_text.strip():
+                        raise ConfigurationError(f"Invalid prompt in {section}: {prompt_name}")
     
-    return data
+    def _is_valid_url(self, url: str) -> bool:
+        """Validate URL format."""
+        try:
+            result = urlparse(url)
+            return all([result.scheme, result.netloc])
+        except Exception:
+            return False
+    
+    def validate_json_structure(self, json_data: Any) -> List[str]:
+        """Validate basic JSON structure and return any issues."""
+        issues = []
+        
+        if not isinstance(json_data, dict):
+            issues.append("Root element must be a JSON object")
+            return issues
+        
+        # Check for empty configuration
+        if not json_data:
+            issues.append("Configuration cannot be empty")
+        
+        # Check for null values in critical paths
+        def check_null_values(obj: Any, path: str = "") -> None:
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    current_path = f"{path}.{key}" if path else key
+                    if value is None and key in ['url', 'endpoint', 'method']:
+                        issues.append(f"Critical field cannot be null: {current_path}")
+                    elif isinstance(value, (dict, list)):
+                        check_null_values(value, current_path)
+            elif isinstance(obj, list):
+                for i, item in enumerate(obj):
+                    current_path = f"{path}[{i}]"
+                    check_null_values(item, current_path)
+        
+        check_null_values(json_data)
+        
+        return issues
