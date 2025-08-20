@@ -8,6 +8,7 @@ pydantic          # Core dependency for FastAPI
 # Database and ORM
 sqlalchemy
 alembic
+aiosqlite
 
 # Configuration management
 pydantic-settings

@@ -1,1 +1,1 @@
-# Controllers package
+# Controllers package - Request handlers and route definitions

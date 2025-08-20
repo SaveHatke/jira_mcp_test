@@ -10,7 +10,10 @@ import sys
 # Add the app directory to the Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from app.database import Base
+# Import all models to ensure they are registered with SQLAlchemy
+from app.models.base import Base
+from app.models.user import User, UserSession
+from app.models.config import LLMConfig, ConfluenceConfig, ToolCache, BackgroundJob
 from app.config import settings
 
 # this is the Alembic Config object, which provides
