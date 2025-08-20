@@ -174,7 +174,7 @@ def configure_logging(
     log_file: Optional[str] = None
 ) -> None:
     """
-    Configure structured logging for the application.
+    Configure comprehensive logging that captures ALL terminal output.
     
     Args:
         level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
@@ -182,7 +182,99 @@ def configure_logging(
         include_stdlib: Whether to include stdlib logs in structured format
         log_file: Optional path to log file for persistent logging
     """
-    # Configure structlog
+    import os
+    from logging.handlers import RotatingFileHandler
+    
+    # Create logs directory if it doesn't exist
+    if log_file:
+        log_dir = os.path.dirname(log_file)
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+    
+    # Create a comprehensive logger that captures everything
+    class ComprehensiveLogger:
+        def __init__(self, file_path=None):
+            self.file_path = file_path
+            self._file_handle = None
+            self._original_stdout = sys.stdout
+            self._original_stderr = sys.stderr
+            
+            if file_path:
+                self._file_handle = open(file_path, 'a', encoding='utf-8', buffering=1)  # Line buffered
+                
+                # Create a custom stdout/stderr that writes to both console and file
+                class TeeWriter:
+                    def __init__(self, original_stream, file_handle):
+                        self.original_stream = original_stream
+                        self.file_handle = file_handle
+                    
+                    def write(self, text):
+                        # Write to original stream (console)
+                        self.original_stream.write(text)
+                        self.original_stream.flush()
+                        
+                        # Write to file (avoid duplicates by checking if it's already a structured log)
+                        if self.file_handle and text.strip():
+                            # Skip if this looks like it's already been processed by our logger
+                            if '"service": "ai-jira-confluence-agent"' in text:
+                                # This is already a structured log, write as-is
+                                if not text.endswith('\n'):
+                                    text += '\n'
+                                self.file_handle.write(text)
+                            else:
+                                # Plain text - convert to structured format
+                                timestamp = datetime.utcnow().isoformat() + 'Z'
+                                log_entry = {
+                                    "event": text.strip(),
+                                    "level": "info",
+                                    "timestamp": timestamp,
+                                    "service": "ai-jira-confluence-agent",
+                                    "source": "stdout"
+                                }
+                                self.file_handle.write(json.dumps(log_entry) + '\n')
+                            self.file_handle.flush()
+                    
+                    def flush(self):
+                        self.original_stream.flush()
+                        if self.file_handle:
+                            self.file_handle.flush()
+                    
+                    def __getattr__(self, name):
+                        return getattr(self.original_stream, name)
+                
+                # Replace stdout and stderr with tee writers
+                sys.stdout = TeeWriter(self._original_stdout, self._file_handle)
+                sys.stderr = TeeWriter(self._original_stderr, self._file_handle)
+        
+        def msg(self, message):
+            # This will go through our tee writer
+            print(message)
+        
+        def debug(self, message): self.msg(message)
+        def info(self, message): self.msg(message)
+        def warning(self, message): self.msg(message)
+        def error(self, message): self.msg(message)
+        def critical(self, message): self.msg(message)
+        
+        def close(self):
+            # Restore original streams
+            if hasattr(self, '_original_stdout'):
+                sys.stdout = self._original_stdout
+            if hasattr(self, '_original_stderr'):
+                sys.stderr = self._original_stderr
+            
+            if self._file_handle:
+                self._file_handle.close()
+    
+    # Create comprehensive logger factory
+    class ComprehensiveLoggerFactory:
+        def __init__(self, file_path=None):
+            self.comprehensive_logger = ComprehensiveLogger(file_path)
+        
+        def __call__(self, name):
+            return self.comprehensive_logger
+    
+    # Configure structlog processors
     processors = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
@@ -197,82 +289,89 @@ def configure_logging(
             structlog.dev.ConsoleRenderer(colors=True),
         ])
     
-    # Create a custom logger factory that writes to both console and file
-    class MultiWriteLoggerFactory:
-        def __init__(self, file_path=None):
-            self.file_path = file_path
-            self._file_handle = None
-            if file_path:
-                import os
-                log_dir = os.path.dirname(file_path)
-                if log_dir and not os.path.exists(log_dir):
-                    os.makedirs(log_dir, exist_ok=True)
-                self._file_handle = open(file_path, 'a', encoding='utf-8')
-        
-        def __call__(self, name):
-            return MultiWriteLogger(self._file_handle)
-    
-    class MultiWriteLogger:
-        def __init__(self, file_handle=None):
-            self.file_handle = file_handle
-        
-        def msg(self, message):
-            # Write to console
-            print(message, file=sys.stdout)
-            # Write to file if available
-            if self.file_handle:
-                print(message, file=self.file_handle)
-                self.file_handle.flush()
-        
-        def debug(self, message): self.msg(message)
-        def info(self, message): self.msg(message)
-        def warning(self, message): self.msg(message)
-        def error(self, message): self.msg(message)
-        def critical(self, message): self.msg(message)
-    
+    # Configure structlog
     structlog.configure(
         processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(
             getattr(logging, level.upper())
         ),
-        logger_factory=MultiWriteLoggerFactory(log_file),
+        logger_factory=ComprehensiveLoggerFactory(log_file),
         cache_logger_on_first_use=True,
     )
     
-    # Configure standard library logging
-    import os
-    from logging.handlers import RotatingFileHandler
-    
-    # Create logs directory if it doesn't exist
-    if log_file:
-        log_dir = os.path.dirname(log_file)
-        if log_dir and not os.path.exists(log_dir):
-            os.makedirs(log_dir, exist_ok=True)
-    
-    # Configure handlers
+    # Configure standard library logging to also capture everything
     handlers = []
     
-    # Console handler (always present)
+    # Console handler (writes to our tee'd stdout)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(getattr(logging, level.upper()))
+    
+    # Custom formatter that ensures consistent output
+    class ComprehensiveFormatter(logging.Formatter):
+        def format(self, record):
+            if json_logs:
+                # Create structured log entry
+                log_data = {
+                    "event": record.getMessage(),
+                    "level": record.levelname.lower(),
+                    "timestamp": datetime.utcnow().isoformat() + 'Z',
+                    "service": "ai-jira-confluence-agent",
+                    "logger": record.name,
+                    "source": "stdlib"
+                }
+                
+                # Add exception info if present
+                if record.exc_info:
+                    import traceback
+                    log_data["exception"] = traceback.format_exception(*record.exc_info)
+                
+                return json.dumps(log_data)
+            else:
+                return super().format(record)
+    
+    console_handler.setFormatter(ComprehensiveFormatter())
     handlers.append(console_handler)
     
-    # File handler (if log_file specified)
-    if log_file:
-        file_handler = RotatingFileHandler(
-            log_file,
-            maxBytes=10 * 1024 * 1024,  # 10MB
-            backupCount=5,
-            encoding='utf-8'
-        )
-        file_handler.setLevel(getattr(logging, level.upper()))
-        handlers.append(file_handler)
-    
+    # Configure root logger
     logging.basicConfig(
-        format="%(message)s" if json_logs else "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         handlers=handlers,
         level=getattr(logging, level.upper()),
+        force=True  # Override any existing configuration
     )
+    
+    # Capture warnings
+    import warnings
+    logging.captureWarnings(True)
+    
+    # Set up exception hook to capture unhandled exceptions
+    def exception_handler(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            # Allow keyboard interrupt to work normally
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        
+        # Log the exception
+        import traceback
+        error_msg = {
+            "event": "Unhandled exception occurred",
+            "level": "critical",
+            "timestamp": datetime.utcnow().isoformat() + 'Z',
+            "service": "ai-jira-confluence-agent",
+            "exception_type": exc_type.__name__,
+            "exception_message": str(exc_value),
+            "traceback": traceback.format_exception(exc_type, exc_value, exc_traceback),
+            "source": "exception_hook"
+        }
+        
+        print(json.dumps(error_msg), file=sys.stderr)
+        
+        # Call the original exception hook
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+    
+    sys.excepthook = exception_handler
+    
+    # Log configuration completion
+    print(f"[OK] Comprehensive logging configured - Level: {level}, JSON: {json_logs}, File: {log_file}")
     
     if include_stdlib:
         # Wrap stdlib loggers with structlog
@@ -453,3 +552,150 @@ def log_function_call(
             return sync_wrapper
     
     return decorator
+
+
+def configure_uvicorn_logging(log_file: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Configure uvicorn logging to ensure all server output is captured.
+    
+    Args:
+        log_file: Optional path to log file
+        
+    Returns:
+        Uvicorn logging configuration
+    """
+    import os
+    
+    # Create logs directory if needed
+    if log_file:
+        log_dir = os.path.dirname(log_file)
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+    
+    # Custom formatter for uvicorn that outputs JSON
+    class UvicornJSONFormatter(logging.Formatter):
+        def format(self, record):
+            log_data = {
+                "event": record.getMessage(),
+                "level": record.levelname.lower(),
+                "timestamp": datetime.utcnow().isoformat() + 'Z',
+                "service": "ai-jira-confluence-agent",
+                "logger": record.name,
+                "source": "uvicorn"
+            }
+            
+            # Add extra fields if present
+            if hasattr(record, 'client_addr'):
+                log_data["client_addr"] = record.client_addr
+            if hasattr(record, 'status_code'):
+                log_data["status_code"] = record.status_code
+            if hasattr(record, 'method'):
+                log_data["method"] = record.method
+            if hasattr(record, 'path'):
+                log_data["path"] = record.path
+            
+            return json.dumps(log_data)
+    
+    # Configure handlers
+    handlers = ["default"]
+    if log_file:
+        handlers.append("file")
+    
+    config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "()": UvicornJSONFormatter,
+            },
+        },
+        "handlers": {
+            "default": {
+                "formatter": "default",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stdout",
+            },
+        },
+        "loggers": {
+            "uvicorn": {
+                "handlers": handlers,
+                "level": "INFO",
+                "propagate": False,
+            },
+            "uvicorn.error": {
+                "handlers": handlers,
+                "level": "INFO",
+                "propagate": False,
+            },
+            "uvicorn.access": {
+                "handlers": handlers,
+                "level": "INFO",
+                "propagate": False,
+            },
+        },
+    }
+    
+    # Add file handler if log file specified
+    if log_file:
+        config["handlers"]["file"] = {
+            "formatter": "default",
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": log_file,
+            "maxBytes": 10 * 1024 * 1024,  # 10MB
+            "backupCount": 5,
+            "encoding": "utf-8",
+        }
+    
+    return config
+
+
+def setup_comprehensive_logging(
+    level: str = "INFO",
+    log_file: str = "logs/app.log"
+) -> None:
+    """
+    Set up comprehensive logging that captures ALL output including:
+    - Structured logs from the application
+    - Print statements
+    - Standard library logs
+    - Uvicorn server logs
+    - Unhandled exceptions
+    - All stdout/stderr output
+    
+    Args:
+        level: Logging level
+        log_file: Path to log file
+    """
+    print(f"[STARTING] Setting up comprehensive logging - Level: {level}, File: {log_file}")
+    
+    try:
+        # Configure main application logging
+        configure_logging(
+            level=level,
+            json_logs=True,
+            include_stdlib=True,
+            log_file=log_file
+        )
+        
+        print(f"[OK] Comprehensive logging setup completed")
+        print(f"[INFO] All terminal output will be saved to: {log_file}")
+        print(f"[INFO] Log level set to: {level}")
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to setup comprehensive logging: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+
+def get_uvicorn_log_config(log_file: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Get uvicorn logging configuration that integrates with our comprehensive logging.
+    
+    Args:
+        log_file: Optional path to log file
+        
+    Returns:
+        Uvicorn log configuration dictionary
+    """
+    return configure_uvicorn_logging(log_file)

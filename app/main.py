@@ -27,10 +27,10 @@ except ImportError as e:
     db_manager = None
 
 
-# Setup structured logging
-configure_logging(
+# Setup comprehensive logging that captures ALL terminal output
+from app.utils.logging import setup_comprehensive_logging
+setup_comprehensive_logging(
     level=settings.log_level,
-    json_logs=settings.json_logs,
     log_file=settings.log_file
 )
 logger = get_logger(__name__)
@@ -38,37 +38,79 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan events."""
-    # Startup
-    logger.info("Starting Jira Intelligence Agent", version="1.0.0")
+    """Application lifespan events with comprehensive error handling."""
+    startup_success = False
     
-    # Initialize configuration system first
     try:
-        initialize_app_configuration()
-        logger.info("Configuration system initialized successfully")
+        # Startup
+        print("[STARTING] Jira Intelligence Agent startup sequence")
+        logger.info("Starting Jira Intelligence Agent", version="1.0.0")
+        
+        # Initialize configuration system first
+        try:
+            print("[INFO] Initializing configuration system...")
+            initialize_app_configuration()
+            print("[OK] Configuration system initialized")
+            logger.info("Configuration system initialized successfully")
+        except Exception as e:
+            print(f"[ERROR] Failed to initialize configuration system: {e}")
+            logger.error("Failed to initialize configuration system", error=str(e))
+            import traceback
+            traceback.print_exc()
+            raise
+        
+        if DATABASE_AVAILABLE and db_manager:
+            try:
+                print("[INFO] Initializing database...")
+                await db_manager.initialize()
+                print("[OK] Database initialized")
+                logger.info("Database initialized successfully")
+            except Exception as e:
+                print(f"[ERROR] Database initialization failed: {e}")
+                logger.error("Database initialization failed", error=str(e))
+                import traceback
+                traceback.print_exc()
+                raise
+        else:
+            print("[WARNING] Database not available - running in compatibility mode")
+            logger.warning("Database not available - running in compatibility mode")
+        
+        print("[SUCCESS] Application startup completed successfully")
+        startup_success = True
+        
+        yield
+        
     except Exception as e:
-        logger.error("Failed to initialize configuration system", error=str(e))
-        sys.exit(1)
+        print(f"[CRITICAL] Application startup failed: {e}")
+        logger.critical("Application startup failed", error=str(e))
+        import traceback
+        traceback.print_exc()
+        
+        if not startup_success:
+            print("[FAILED] Exiting due to startup failure")
+            sys.exit(1)
+        raise
     
-    if DATABASE_AVAILABLE and db_manager:
+    finally:
+        # Shutdown
         try:
-            await db_manager.initialize()
-            logger.info("Database initialized successfully")
+            print("[INFO] Starting application shutdown...")
+            logger.info("Shutting down Jira Intelligence Agent")
+            
+            if DATABASE_AVAILABLE and db_manager:
+                try:
+                    await db_manager.shutdown()
+                    print("[OK] Database shutdown completed")
+                    logger.info("Database shutdown completed")
+                except Exception as e:
+                    print(f"[ERROR] Database shutdown failed: {e}")
+                    logger.error("Database shutdown failed", error=str(e))
+            
+            print("[COMPLETED] Application shutdown completed")
+            
         except Exception as e:
-            logger.error("Database initialization failed", error=str(e))
-    else:
-        logger.warning("Database not available - running in compatibility mode")
-    
-    yield
-    
-    # Shutdown
-    logger.info("Shutting down Jira Intelligence Agent")
-    if DATABASE_AVAILABLE and db_manager:
-        try:
-            await db_manager.shutdown()
-            logger.info("Database shutdown completed")
-        except Exception as e:
-            logger.error("Database shutdown failed", error=str(e))
+            print(f"[ERROR] Error during shutdown: {e}")
+            logger.error("Error during shutdown", error=str(e))
 
 
 # Create FastAPI application
@@ -229,10 +271,16 @@ async def root(request: Request):
 
 if __name__ == "__main__":
     import uvicorn
+    from app.utils.logging import get_uvicorn_log_config
+    
+    print("[STARTING] Uvicorn server with comprehensive logging")
+    
     uvicorn.run(
         "app.main:app",
         host="127.0.0.1",
         port=8000,
         reload=settings.debug,
-        log_level=settings.log_level.lower()
+        log_level=settings.log_level.lower(),
+        log_config=get_uvicorn_log_config(settings.log_file),
+        access_log=True
     )
