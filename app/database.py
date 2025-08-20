@@ -12,7 +12,7 @@ from sqlalchemy.pool import StaticPool
 import structlog
 
 from app.config import settings
-from app.models.base import Base
+from app.models import Base
 
 logger = structlog.get_logger(__name__)
 
