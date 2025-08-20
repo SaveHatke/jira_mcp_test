@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Jira Intelligence Agent{% endblock %}</title>
+    
+    <!-- TailwindCSS (served locally) -->
+    <link href="{{ url_for('static', path='/css/tailwind.min.css') }}" rel="stylesheet">
+    
+    <!-- HTMX (vendored locally) -->
+    <script src="{{ url_for('static', path='/js/htmx.min.js') }}"></script>
+    
+    <!-- Alpine.js (vendored locally) -->
+    <script defer src="{{ url_for('static', path='/js/alpine.min.js') }}"></script>
+    
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-gray-50">
+    {% block content %}{% endblock %}
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

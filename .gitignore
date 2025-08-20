@@ -1,0 +1,69 @@
+#Custom
+.kiro/
+.env.*
+*.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Database
+*.db
+*.sqlite3
+
+# Environment Variables
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Cache
+.cache/
+.pytest_cache/
+
+# Configuration (sensitive)
+config/config.json
+config/header.json
+config/payload.json
+config/prompts.json
+
+# Static assets (will be downloaded)
+static/css/tailwind.min.css
+static/js/htmx.min.js
+static/js/alpine.min.js
+
+# OS
+.DS_Store
+Thumbs.db
