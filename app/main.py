@@ -168,6 +168,10 @@ app.include_router(auth_router)
 from app.controllers.dashboard_controller import router as dashboard_router
 app.include_router(dashboard_router)
 
+# Import and include profile router
+from app.controllers.profile_controller import router as profile_router
+app.include_router(profile_router)
+
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 

@@ -1,0 +1,282 @@
+{% extends "base_auth.html" %}
+
+{% block title %}Profile - Jira Intelligence Agent{% endblock %}
+
+{% block content %}
+<div class="p-6">
+    <!-- Success/Error Messages -->
+    {% if success %}
+    <div class="mb-6 bg-green-50 border border-green-200 rounded-md p-4">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm font-medium text-green-800">{{ success }}</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    {% if error %}
+    <div class="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm font-medium text-red-800">{{ error }}</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Page header -->
+    <div class="mb-8">
+        <nav class="flex" aria-label="Breadcrumb">
+            <ol class="flex items-center space-x-4">
+                <li>
+                    <div>
+                        <a href="/dashboard" class="text-gray-400 hover:text-gray-500">
+                            <svg class="flex-shrink-0 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5a2 2 0 012-2h2a2 2 0 012 2v2H8V5z" />
+                            </svg>
+                            <span class="sr-only">Dashboard</span>
+                        </a>
+                    </div>
+                </li>
+                <li>
+                    <div class="flex items-center">
+                        <svg class="flex-shrink-0 h-5 w-5 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="ml-4 text-sm font-medium text-gray-500">Profile</span>
+                    </div>
+                </li>
+            </ol>
+        </nav>
+        <div class="mt-4">
+            <h1 class="text-3xl font-bold text-gray-900">User Profile</h1>
+            <p class="mt-2 text-lg text-gray-600">Manage your account information and preferences.</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Profile Information -->
+        <div class="lg:col-span-2">
+            <div class="bg-white rounded-xl shadow-lg">
+                <div class="p-6">
+                    <div class="flex items-center mb-6">
+                        <div class="flex-shrink-0">
+                            {% if user.avatar_url %}
+                            <img class="h-20 w-20 rounded-full border-4 border-indigo-100" src="{{ user.avatar_url }}" alt="{{ user.display_name }}">
+                            {% else %}
+                            <div class="h-20 w-20 rounded-full bg-indigo-600 flex items-center justify-center border-4 border-indigo-100">
+                                <span class="text-2xl font-bold text-white">{{ user.display_name[0] }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="ml-6">
+                            <h2 class="text-2xl font-bold text-gray-900">{{ user.display_name }}</h2>
+                            <p class="text-sm text-gray-500">Employee ID: {{ user.employee_id }}</p>
+                            <p class="text-sm text-indigo-600">{{ user.email }}</p>
+                        </div>
+                    </div>
+
+                    <!-- Profile Details -->
+                    <div class="border-t border-gray-200 pt-6">
+                        <h3 class="text-lg font-medium text-gray-900 mb-4">Account Information</h3>
+                        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <dt class="text-sm font-medium text-gray-500">Full Name</dt>
+                                <dd class="mt-1 text-lg font-semibold text-gray-900">{{ user.display_name }}</dd>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <dt class="text-sm font-medium text-gray-500">Employee ID</dt>
+                                <dd class="mt-1 text-lg font-semibold text-gray-900">{{ user.employee_id }}</dd>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <dt class="text-sm font-medium text-gray-500">Email Address</dt>
+                                <dd class="mt-1 text-lg font-semibold text-gray-900">{{ user.email }}</dd>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <dt class="text-sm font-medium text-gray-500">Account Status</dt>
+                                <dd class="mt-1">
+                                    {% if user.active %}
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                        <svg class="mr-1 h-3 w-3" fill="currentColor" viewBox="0 0 8 8">
+                                            <circle cx="4" cy="4" r="3" />
+                                        </svg>
+                                        Active
+                                    </span>
+                                    {% else %}
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                        <svg class="mr-1 h-3 w-3" fill="currentColor" viewBox="0 0 8 8">
+                                            <circle cx="4" cy="4" r="3" />
+                                        </svg>
+                                        Inactive
+                                    </span>
+                                    {% endif %}
+                                </dd>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-4 sm:col-span-2">
+                                <dt class="text-sm font-medium text-gray-500">Jira Instance</dt>
+                                <dd class="mt-1 text-lg font-semibold text-gray-900 break-all">{{ user.jira_url }}</dd>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <dt class="text-sm font-medium text-gray-500">Account Created</dt>
+                                <dd class="mt-1 text-lg font-semibold text-gray-900">{{ user.created_at.strftime('%B %d, %Y') }}</dd>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-4">
+                                <dt class="text-sm font-medium text-gray-500">Last Updated</dt>
+                                <dd class="mt-1 text-lg font-semibold text-gray-900">{{ user.updated_at.strftime('%B %d, %Y') }}</dd>
+                            </div>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Security & Actions -->
+        <div class="space-y-6">
+            <!-- Password Change Card -->
+            <div class="bg-white rounded-xl shadow-lg">
+                <div class="p-6">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Security</h3>
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between p-4 bg-yellow-50 rounded-lg">
+                            <div>
+                                <p class="text-sm font-medium text-yellow-800">Password</p>
+                                <p class="text-xs text-yellow-600">Last changed: {{ user.updated_at.strftime('%B %d, %Y') }}</p>
+                            </div>
+                            <button type="button" 
+                                    onclick="showPasswordChangeModal()"
+                                    class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-yellow-700 bg-yellow-100 hover:bg-yellow-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500">
+                                Change
+                            </button>
+                        </div>
+                        
+                        <div class="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
+                            <div>
+                                <p class="text-sm font-medium text-blue-800">Jira PAT</p>
+                                <p class="text-xs text-blue-600">Encrypted and secure</p>
+                            </div>
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                <svg class="mr-1 h-3 w-3" fill="currentColor" viewBox="0 0 8 8">
+                                    <circle cx="4" cy="4" r="3" />
+                                </svg>
+                                Configured
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions Card -->
+            <div class="bg-white rounded-xl shadow-lg">
+                <div class="p-6">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
+                    <div class="space-y-3">
+                        <a href="/dashboard" 
+                           class="flex items-center p-3 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50 transition-colors duration-200">
+                            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5a2 2 0 012-2h2a2 2 0 012 2v2H8V5z" />
+                            </svg>
+                            Back to Dashboard
+                        </a>
+                        <a href="/config" 
+                           class="flex items-center p-3 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50 transition-colors duration-200">
+                            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            Manage Configurations
+                        </a>
+                        <a href="/ai/story-creator" 
+                           class="flex items-center p-3 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50 transition-colors duration-200">
+                            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                            </svg>
+                            AI Issue Creator
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Password Change Modal -->
+<div id="passwordChangeModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-gray-900">Change Password</h3>
+                <button onclick="hidePasswordChangeModal()" class="text-gray-400 hover:text-gray-600">
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            
+            <form id="passwordChangeForm" method="post" action="/profile/change-password" class="space-y-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                
+                <div>
+                    <label for="current_password" class="block text-sm font-medium text-gray-700">Current Password</label>
+                    <input type="password" id="current_password" name="current_password" required
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                
+                <div>
+                    <label for="new_password" class="block text-sm font-medium text-gray-700">New Password</label>
+                    <input type="password" id="new_password" name="new_password" required
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                    <p class="mt-1 text-xs text-gray-500">Minimum 8 characters with uppercase, lowercase, numbers, and special characters</p>
+                </div>
+                
+                <div>
+                    <label for="confirm_password" class="block text-sm font-medium text-gray-700">Confirm New Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" required
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                
+                <div class="flex justify-end space-x-3 pt-4">
+                    <button type="button" onclick="hidePasswordChangeModal()"
+                            class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Change Password
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function showPasswordChangeModal() {
+    document.getElementById('passwordChangeModal').classList.remove('hidden');
+}
+
+function hidePasswordChangeModal() {
+    document.getElementById('passwordChangeModal').classList.add('hidden');
+    document.getElementById('passwordChangeForm').reset();
+}
+
+// Close modal when clicking outside
+document.getElementById('passwordChangeModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        hidePasswordChangeModal();
+    }
+});
+</script>
+{% endblock %}

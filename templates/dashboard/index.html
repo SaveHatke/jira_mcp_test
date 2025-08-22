@@ -1,149 +1,180 @@
-{% extends "base.html" %}
+{% extends "base_auth.html" %}
 
 {% block title %}Dashboard - Jira Intelligence Agent{% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gray-50">
-    <!-- Navigation -->
-    <nav class="bg-white shadow">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <h1 class="text-xl font-semibold text-gray-900">
-                        Jira Intelligence Agent
-                    </h1>
-                </div>
-                <div class="flex items-center space-x-4">
-                    {% if user %}
-                    <div class="flex items-center space-x-3">
-                        {% if user.avatar_url %}
-                        <img class="h-8 w-8 rounded-full" src="{{ user.avatar_url }}" alt="{{ user.display_name }}">
-                        {% endif %}
-                        <span class="text-sm font-medium text-gray-700">{{ user.display_name }}</span>
-                        <form method="post" action="/auth/logout" class="inline">
-                            <button type="submit" class="text-sm text-gray-500 hover:text-gray-700">
-                                Logout
-                            </button>
-                        </form>
+<!-- Main dashboard content -->
+<div class="p-6">
+    <!-- Welcome header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900">Welcome back, {{ user.display_name }}!</h1>
+        <p class="mt-2 text-lg text-gray-600">Your AI-powered assistant for creating structured Jira stories and tasks.</p>
+    </div>
+
+    <!-- Feature cards grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        <!-- AI Issue Creator Card -->
+        <div class="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+            <div class="p-8">
+                <div class="flex items-center mb-6">
+                    <div class="flex-shrink-0">
+                        <div class="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center">
+                            <svg class="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                            </svg>
+                        </div>
                     </div>
-                    {% endif %}
+                    <div class="ml-4">
+                        <h3 class="text-xl font-semibold text-gray-900">AI Issue Creator</h3>
+                        <p class="text-sm text-indigo-600 font-medium">Generate Jira Stories</p>
+                    </div>
+                </div>
+                <p class="text-gray-700 mb-6 leading-relaxed">
+                    Transform your requirements into well-structured Jira stories using AI. Get iterative refinement, 
+                    validation rules, and seamless integration with your Jira workspace.
+                </p>
+                <div class="flex items-center justify-between">
+                    <a href="/ai/story-creator" 
+                       class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200">
+                        <svg class="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        Create Stories
+                    </a>
+                    <div class="text-sm text-gray-500">
+                        <span class="inline-flex items-center">
+                            <svg class="mr-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            AI-Powered
+                        </span>
+                    </div>
                 </div>
             </div>
         </div>
-    </nav>
 
-    <!-- Main content -->
-    <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div class="px-4 py-6 sm:px-0">
-            <div class="border-4 border-dashed border-gray-200 rounded-lg p-8">
-                <div class="text-center">
-                    <h2 class="text-2xl font-bold text-gray-900 mb-4">
-                        Welcome to Jira Intelligence Agent
-                    </h2>
-                    <p class="text-gray-600 mb-8">
-                        Your AI-powered assistant for creating structured Jira stories and tasks.
-                    </p>
-                    
-                    {% if user %}
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-                        <!-- AI Issue Creator Card -->
-                        <div class="bg-white overflow-hidden shadow rounded-lg">
-                            <div class="p-6">
-                                <div class="flex items-center">
-                                    <div class="flex-shrink-0">
-                                        <svg class="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                                        </svg>
-                                    </div>
-                                    <div class="ml-5 w-0 flex-1">
-                                        <dl>
-                                            <dt class="text-sm font-medium text-gray-500 truncate">
-                                                AI Issue Creator
-                                            </dt>
-                                            <dd class="text-lg font-medium text-gray-900">
-                                                Generate Jira Stories
-                                            </dd>
-                                        </dl>
-                                    </div>
-                                </div>
-                                <div class="mt-4">
-                                    <p class="text-sm text-gray-600">
-                                        Use AI to create well-structured Jira stories from requirements with iterative refinement.
-                                    </p>
-                                    <div class="mt-4">
-                                        <a href="/ai/story-creator" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
-                                            Create Stories
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Configuration Card -->
-                        <div class="bg-white overflow-hidden shadow rounded-lg">
-                            <div class="p-6">
-                                <div class="flex items-center">
-                                    <div class="flex-shrink-0">
-                                        <svg class="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                        </svg>
-                                    </div>
-                                    <div class="ml-5 w-0 flex-1">
-                                        <dl>
-                                            <dt class="text-sm font-medium text-gray-500 truncate">
-                                                Configurations
-                                            </dt>
-                                            <dd class="text-lg font-medium text-gray-900">
-                                                Manage Integrations
-                                            </dd>
-                                        </dl>
-                                    </div>
-                                </div>
-                                <div class="mt-4">
-                                    <p class="text-sm text-gray-600">
-                                        Configure your Company LLM, Jira, and Confluence integrations for seamless operation.
-                                    </p>
-                                    <div class="mt-4">
-                                        <a href="/config" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700">
-                                            Manage Config
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
+        <!-- Configuration Card -->
+        <div class="bg-gradient-to-br from-green-50 to-green-100 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+            <div class="p-8">
+                <div class="flex items-center mb-6">
+                    <div class="flex-shrink-0">
+                        <div class="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
+                            <svg class="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
                         </div>
                     </div>
+                    <div class="ml-4">
+                        <h3 class="text-xl font-semibold text-gray-900">Configurations</h3>
+                        <p class="text-sm text-green-600 font-medium">Manage Integrations</p>
+                    </div>
+                </div>
+                <p class="text-gray-700 mb-6 leading-relaxed">
+                    Configure your Company LLM, Jira, and Confluence integrations. Test connections, 
+                    validate credentials, and ensure seamless operation across all platforms.
+                </p>
+                <div class="flex items-center justify-between">
+                    <a href="/config" 
+                       class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors duration-200">
+                        <svg class="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+                        </svg>
+                        Manage Config
+                    </a>
+                    <div class="text-sm text-gray-500">
+                        {% if configuration_complete %}
+                        <span class="inline-flex items-center text-green-600">
+                            <svg class="mr-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Configured
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center text-yellow-600">
+                            <svg class="mr-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                            </svg>
+                            Setup Required
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                    <!-- User Profile Section -->
-                    <div class="mt-8 bg-white shadow rounded-lg p-6 max-w-2xl mx-auto">
-                        <h3 class="text-lg font-medium text-gray-900 mb-4">Your Profile</h3>
-                        <dl class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                            <div>
-                                <dt class="text-sm font-medium text-gray-500">Employee ID</dt>
-                                <dd class="mt-1 text-sm text-gray-900">{{ user.employee_id }}</dd>
-                            </div>
-                            <div>
-                                <dt class="text-sm font-medium text-gray-500">Name</dt>
-                                <dd class="mt-1 text-sm text-gray-900">{{ user.display_name }}</dd>
-                            </div>
-                            <div>
-                                <dt class="text-sm font-medium text-gray-500">Email</dt>
-                                <dd class="mt-1 text-sm text-gray-900">{{ user.email }}</dd>
-                            </div>
-                            <div>
-                                <dt class="text-sm font-medium text-gray-500">Jira URL</dt>
-                                <dd class="mt-1 text-sm text-gray-900">{{ user.jira_url }}</dd>
-                            </div>
-                        </dl>
+    <!-- Quick stats and user info -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- User Profile Card -->
+        <div class="lg:col-span-2 bg-white rounded-xl shadow-lg">
+            <div class="p-6">
+                <div class="flex items-center mb-6">
+                    <div class="flex-shrink-0">
+                        {% if user.avatar_url %}
+                        <img class="h-16 w-16 rounded-full border-4 border-indigo-100" src="{{ user.avatar_url }}" alt="{{ user.display_name }}">
+                        {% else %}
+                        <div class="h-16 w-16 rounded-full bg-indigo-600 flex items-center justify-center border-4 border-indigo-100">
+                            <span class="text-xl font-bold text-white">{{ user.display_name[0] }}</span>
+                        </div>
+                        {% endif %}
                     </div>
-                    {% else %}
-                    <div class="text-center">
-                        <p class="text-gray-600 mb-4">Please log in to access the application.</p>
-                        <a href="/auth/login" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
-                            Sign In
-                        </a>
+                    <div class="ml-6">
+                        <h3 class="text-xl font-semibold text-gray-900">{{ user.display_name }}</h3>
+                        <p class="text-sm text-gray-500">{{ user.employee_id }}</p>
+                        <p class="text-sm text-indigo-600">{{ user.email }}</p>
                     </div>
-                    {% endif %}
+                </div>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <dt class="text-sm font-medium text-gray-500">Employee ID</dt>
+                        <dd class="mt-1 text-lg font-semibold text-gray-900">{{ user.employee_id }}</dd>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <dt class="text-sm font-medium text-gray-500">Email Address</dt>
+                        <dd class="mt-1 text-lg font-semibold text-gray-900 truncate">{{ user.email }}</dd>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4 sm:col-span-2">
+                        <dt class="text-sm font-medium text-gray-500">Jira Instance</dt>
+                        <dd class="mt-1 text-lg font-semibold text-gray-900 truncate">{{ user.jira_url }}</dd>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions Card -->
+        <div class="bg-white rounded-xl shadow-lg">
+            <div class="p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+                <div class="space-y-3">
+                    <a href="/profile" 
+                       class="flex items-center p-3 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50 transition-colors duration-200">
+                        <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        View Profile
+                    </a>
+                    <a href="/config" 
+                       class="flex items-center p-3 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50 transition-colors duration-200">
+                        <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Settings
+                    </a>
+                    <div class="border-t border-gray-200 pt-3">
+                        <form method="post" action="/auth/logout">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" 
+                                    class="flex items-center w-full p-3 text-sm font-medium text-red-600 rounded-lg hover:bg-red-50 transition-colors duration-200">
+                                <svg class="mr-3 h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                </svg>
+                                Sign Out
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
